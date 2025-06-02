@@ -20,11 +20,24 @@ object LocationUtils {
             Priority.PRIORITY_HIGH_ACCURACY,
             cancellationTokenSource.token
         ).addOnSuccessListener { location ->
-            onSuccess(location)
-        }.addOnFailureListener { exception ->
+            // Log the location details to Logcat for debugging
             Log.i(
                 "LocationUtils",
-                "get location error ${exception.message}"
+                "Location retrieved successfully: Latitude=${location.latitude}, Longitude=${location.longitude}, Accuracy=${location.accuracy}m"
+            )
+
+            // Also log additional location details if available
+            Log.d(
+                "LocationUtils",
+                "Additional location info: Provider=${location.provider}, Time=${location.time}, Altitude=${location.altitude}"
+            )
+
+            // Call the original success callback
+            onSuccess(location)
+        }.addOnFailureListener { exception ->
+            Log.e(
+                "LocationUtils",
+                "Failed to get location: ${exception.message}"
             )
         }
     }
