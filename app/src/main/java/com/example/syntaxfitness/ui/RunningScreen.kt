@@ -16,6 +16,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.app.ActivityCompat
 import com.example.syntaxfitness.ui.theme.SyntaxFitnessTheme
 import com.example.syntaxfitness.utils.LocationUtils
 
@@ -33,6 +34,9 @@ fun RunningScreen(modifier: Modifier = Modifier) {
     var showPermissionDeniedMessage by remember { mutableStateOf(false) }
     var isGettingLocation by remember { mutableStateOf(false) }
 
+    // New state for permission rationale dialog
+    var showPermissionRationaleDialog by remember { mutableStateOf(false) }
+
     val requestPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
@@ -43,9 +47,95 @@ fun RunningScreen(modifier: Modifier = Modifier) {
 
         if (!hasLocationPermission) {
             showPermissionDeniedMessage = true
+
+            // Check if we should show rationale for the next time
+            // This helps us prepare for future permission requests
+            val shouldShowRationale = ActivityCompat.shouldShowRequestPermissionRationale(
+                context as androidx.activity.ComponentActivity,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) || ActivityCompat.shouldShowRequestPermissionRationale(
+                context as androidx.activity.ComponentActivity,
+                Manifest.permission.ACCESS_COARSE_LOCATION
+            )
+
+            // Note: At this point, we've already been denied, so we could show
+            // additional explanation UI if needed
         } else {
             showPermissionDeniedMessage = false
         }
+    }
+
+    // Function to handle permission requests with rationale check
+    fun handlePermissionRequest() {
+        // Check if we should show rationale before requesting permission
+        val shouldShowRationale = ActivityCompat.shouldShowRequestPermissionRationale(
+            context as androidx.activity.ComponentActivity,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        ) || ActivityCompat.shouldShowRequestPermissionRationale(
+            context as androidx.activity.ComponentActivity,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        )
+
+        if (shouldShowRationale) {
+            // Show rationale dialog first
+            showPermissionRationaleDialog = true
+        } else {
+            // Request permission directly
+            requestPermissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+                )
+            )
+        }
+    }
+
+    // Permission Rationale Dialog
+    if (showPermissionRationaleDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showPermissionRationaleDialog = false
+            },
+            title = {
+                Text(
+                    text = "Standortberechtigung erforderlich",
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text(
+                    text = "Diese App benötigt Zugriff auf Ihren Standort, um Ihre Laufstrecke zu verfolgen. " +
+                            "Wir verwenden GPS-Daten nur während aktiver Läufe, um Start- und Endpositionen " +
+                            "zu erfassen. Ihre Standortdaten werden nicht gespeichert oder weitergegeben.",
+                    lineHeight = 20.sp
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showPermissionRationaleDialog = false
+                        // Now request the permission after showing rationale
+                        requestPermissionLauncher.launch(
+                            arrayOf(
+                                Manifest.permission.ACCESS_FINE_LOCATION,
+                                Manifest.permission.ACCESS_COARSE_LOCATION
+                            )
+                        )
+                    }
+                ) {
+                    Text("Berechtigung erteilen")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showPermissionRationaleDialog = false
+                    }
+                ) {
+                    Text("Abbrechen")
+                }
+            }
+        )
     }
 
     Column(
@@ -79,12 +169,26 @@ fun RunningScreen(modifier: Modifier = Modifier) {
                         containerColor = MaterialTheme.colorScheme.errorContainer
                     )
                 ) {
-                    Text(
-                        text = "Standortberechtigung erforderlich für GPS-Tracking",
+                    Column(
                         modifier = Modifier.padding(16.dp),
-                        color = MaterialTheme.colorScheme.onErrorContainer,
-                        textAlign = TextAlign.Center
-                    )
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "Standortberechtigung erforderlich für GPS-Tracking",
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+
+                        // Add explanation text in the error card
+                        Text(
+                            text = "Tippen Sie auf 'Berechtigung anfordern' für weitere Informationen.",
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            textAlign = TextAlign.Center,
+                            fontSize = 12.sp,
+                            fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                        )
+                    }
                 }
             }
 
@@ -114,13 +218,8 @@ fun RunningScreen(modifier: Modifier = Modifier) {
             if (!hasLocationPermission) {
                 OutlinedButton(
                     onClick = {
-                        // Start the permission request process
-                        requestPermissionLauncher.launch(
-                            arrayOf(
-                                Manifest.permission.ACCESS_FINE_LOCATION,
-                                Manifest.permission.ACCESS_COARSE_LOCATION
-                            )
-                        )
+                        // Use our new permission handling function
+                        handlePermissionRequest()
                     },
                     modifier = Modifier.padding(bottom = 16.dp)
                 ) {
@@ -133,13 +232,8 @@ fun RunningScreen(modifier: Modifier = Modifier) {
                 onClick = {
                     // First check if we have location permission
                     if (!hasLocationPermission) {
-                        // Request permission before starting the run
-                        requestPermissionLauncher.launch(
-                            arrayOf(
-                                Manifest.permission.ACCESS_FINE_LOCATION,
-                                Manifest.permission.ACCESS_COARSE_LOCATION
-                            )
-                        )
+                        // Use our new permission handling function
+                        handlePermissionRequest()
                         return@Button
                     }
 
