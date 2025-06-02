@@ -1,5 +1,8 @@
 package com.example.syntaxfitness.ui
 
+import android.Manifest
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -22,6 +25,29 @@ fun RunningScreen(modifier: Modifier = Modifier) {
     var endLatitude by remember { mutableStateOf("--") }
     var endLongitude by remember { mutableStateOf("--") }
 
+    // State für Permission Status
+    var hasLocationPermission by remember { mutableStateOf(false) }
+    var showPermissionDeniedMessage by remember { mutableStateOf(false) }
+
+    // Permission Launcher für Standortberechtigungen
+    // Dieser Launcher kann sowohl FINE als auch COARSE Location Permissions anfragen
+    val requestPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        // Callback wird ausgeführt, wenn der User auf "Erlauben" oder "Ablehnen" klickt
+        val fineLocationGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] ?: false
+        val coarseLocationGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] ?: false
+
+        // Wir brauchen mindestens eine der beiden Berechtigungen
+        hasLocationPermission = fineLocationGranted || coarseLocationGranted
+
+        if (!hasLocationPermission) {
+            showPermissionDeniedMessage = true
+        } else {
+            showPermissionDeniedMessage = false
+        }
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -38,12 +64,30 @@ fun RunningScreen(modifier: Modifier = Modifier) {
             modifier = Modifier.padding(top = 32.dp)
         )
 
-        // Location Display Section
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(24.dp),
             modifier = Modifier.weight(1f)
         ) {
+            // Permission Status Anzeige
+            if (showPermissionDeniedMessage) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer
+                    )
+                ) {
+                    Text(
+                        text = "Standortberechtigung erforderlich für GPS-Tracking",
+                        modifier = Modifier.padding(16.dp),
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+
             // Start Location Card
             LocationCard(
                 title = "Start Position",
@@ -66,22 +110,48 @@ fun RunningScreen(modifier: Modifier = Modifier) {
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.padding(bottom = 32.dp)
         ) {
+            // Permission Request Button (wird nur angezeigt wenn keine Berechtigung vorhanden)
+            if (!hasLocationPermission) {
+                OutlinedButton(
+                    onClick = {
+                        // Hier starten wir die Berechtigungsanfrage
+                        requestPermissionLauncher.launch(
+                            arrayOf(
+                                Manifest.permission.ACCESS_FINE_LOCATION,
+                                Manifest.permission.ACCESS_COARSE_LOCATION
+                            )
+                        )
+                    },
+                    modifier = Modifier.padding(bottom = 16.dp)
+                ) {
+                    Text("Standortberechtigung anfordern")
+                }
+            }
+
             // Start/Stop Button
             Button(
                 onClick = {
+                    if (!hasLocationPermission) {
+                        // Erst Berechtigung anfordern, bevor der Lauf gestartet wird
+                        requestPermissionLauncher.launch(
+                            arrayOf(
+                                Manifest.permission.ACCESS_FINE_LOCATION,
+                                Manifest.permission.ACCESS_COARSE_LOCATION
+                            )
+                        )
+                        return@Button
+                    }
+
                     if (!isRunning) {
-                        // Lauf starten
+                        // Lauf starten - hier würde später echter GPS-Abruf stattfinden
                         isRunning = true
-                        // Hier würde später die GPS-Position abgerufen werden
                         startLatitude = "52.5200"
                         startLongitude = "13.4050"
-                        // End-Position zurücksetzen
                         endLatitude = "--"
                         endLongitude = "--"
                     } else {
                         // Lauf beenden
                         isRunning = false
-                        // Hier würde später die End-Position gesetzt werden
                         endLatitude = "52.5190"
                         endLongitude = "13.4060"
                     }
@@ -107,7 +177,11 @@ fun RunningScreen(modifier: Modifier = Modifier) {
 
             // Status Text
             Text(
-                text = if (isRunning) "Lauf läuft..." else "Bereit zum Starten",
+                text = when {
+                    !hasLocationPermission -> "Standortberechtigung erforderlich"
+                    isRunning -> "Lauf läuft..."
+                    else -> "Bereit zum Starten"
+                },
                 fontSize = 16.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 8.dp)
