@@ -10,35 +10,35 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.syntaxfitness.ui.theme.SyntaxFitnessTheme
+import com.example.syntaxfitness.utils.LocationUtils
 
 @Composable
 fun RunningScreen(modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+
     var isRunning by remember { mutableStateOf(false) }
     var startLatitude by remember { mutableStateOf("--") }
     var startLongitude by remember { mutableStateOf("--") }
     var endLatitude by remember { mutableStateOf("--") }
     var endLongitude by remember { mutableStateOf("--") }
 
-    // State für Permission Status
     var hasLocationPermission by remember { mutableStateOf(false) }
     var showPermissionDeniedMessage by remember { mutableStateOf(false) }
+    var isGettingLocation by remember { mutableStateOf(false) }
 
-    // Permission Launcher für Standortberechtigungen
-    // Dieser Launcher kann sowohl FINE als auch COARSE Location Permissions anfragen
     val requestPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
-        // Callback wird ausgeführt, wenn der User auf "Erlauben" oder "Ablehnen" klickt
         val fineLocationGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] ?: false
         val coarseLocationGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] ?: false
 
-        // Wir brauchen mindestens eine der beiden Berechtigungen
         hasLocationPermission = fineLocationGranted || coarseLocationGranted
 
         if (!hasLocationPermission) {
@@ -69,7 +69,7 @@ fun RunningScreen(modifier: Modifier = Modifier) {
             verticalArrangement = Arrangement.spacedBy(24.dp),
             modifier = Modifier.weight(1f)
         ) {
-            // Permission Status Anzeige
+            // Permission status display
             if (showPermissionDeniedMessage) {
                 Card(
                     modifier = Modifier
@@ -110,11 +110,11 @@ fun RunningScreen(modifier: Modifier = Modifier) {
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.padding(bottom = 32.dp)
         ) {
-            // Permission Request Button (wird nur angezeigt wenn keine Berechtigung vorhanden)
+            // Permission Request Button (only shown when no permission is granted)
             if (!hasLocationPermission) {
                 OutlinedButton(
                     onClick = {
-                        // Hier starten wir die Berechtigungsanfrage
+                        // Start the permission request process
                         requestPermissionLauncher.launch(
                             arrayOf(
                                 Manifest.permission.ACCESS_FINE_LOCATION,
@@ -131,8 +131,9 @@ fun RunningScreen(modifier: Modifier = Modifier) {
             // Start/Stop Button
             Button(
                 onClick = {
+                    // First check if we have location permission
                     if (!hasLocationPermission) {
-                        // Erst Berechtigung anfordern, bevor der Lauf gestartet wird
+                        // Request permission before starting the run
                         requestPermissionLauncher.launch(
                             arrayOf(
                                 Manifest.permission.ACCESS_FINE_LOCATION,
@@ -143,19 +144,38 @@ fun RunningScreen(modifier: Modifier = Modifier) {
                     }
 
                     if (!isRunning) {
-                        // Lauf starten - hier würde später echter GPS-Abruf stattfinden
+                        // Start run - get actual GPS location
                         isRunning = true
-                        startLatitude = "52.5200"
-                        startLongitude = "13.4050"
+                        isGettingLocation = true
+
+                        // Clear previous end location
                         endLatitude = "--"
                         endLongitude = "--"
+
+                        // Use LocationUtils to get the current position
+                        LocationUtils.getLocation(context) { location ->
+                            // This callback runs when we successfully get the location
+                            // Format the coordinates to 4 decimal places for display
+                            startLatitude = String.format("%.4f", location.latitude)
+                            startLongitude = String.format("%.4f", location.longitude)
+                            isGettingLocation = false
+                        }
                     } else {
-                        // Lauf beenden
-                        isRunning = false
-                        endLatitude = "52.5190"
-                        endLongitude = "13.4060"
+                        // End run - get final GPS location
+                        isGettingLocation = true
+
+                        // Use LocationUtils to get the current position for end location
+                        LocationUtils.getLocation(context) { location ->
+                            // This callback runs when we successfully get the location
+                            // Format the coordinates to 4 decimal places for display
+                            endLatitude = String.format("%.4f", location.latitude)
+                            endLongitude = String.format("%.4f", location.longitude)
+                            isGettingLocation = false
+                            isRunning = false
+                        }
                     }
                 },
+                enabled = !isGettingLocation, // Disable button while getting location
                 modifier = Modifier
                     .size(120.dp)
                     .padding(8.dp),
@@ -179,12 +199,14 @@ fun RunningScreen(modifier: Modifier = Modifier) {
             Text(
                 text = when {
                     !hasLocationPermission -> "Standortberechtigung erforderlich"
+                    isGettingLocation -> "GPS-Position wird ermittelt..."
                     isRunning -> "Lauf läuft..."
                     else -> "Bereit zum Starten"
                 },
                 fontSize = 16.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 8.dp)
+                modifier = Modifier.padding(top = 8.dp),
+                textAlign = TextAlign.Center
             )
         }
     }
