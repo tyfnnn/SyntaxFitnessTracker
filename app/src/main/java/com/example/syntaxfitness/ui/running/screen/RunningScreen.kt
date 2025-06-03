@@ -26,8 +26,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -260,63 +262,275 @@ fun RunningScreen(
 private fun AnimatedGradientBackground() {
     val infiniteTransition = rememberInfiniteTransition(label = "background")
 
-    val offset1 by infiniteTransition.animateFloat(
+    // Multiple animated values for complex movement
+    val primaryOffset by infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = 360f,
         animationSpec = infiniteRepeatable(
-            animation = tween(10000, easing = LinearEasing),
+            animation = tween(20000, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
-        label = "offset1"
+        label = "primaryOffset"
     )
 
-    val offset2 by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
+    val secondaryOffset by infiniteTransition.animateFloat(
+        initialValue = 360f,
+        targetValue = 0f,
         animationSpec = infiniteRepeatable(
-            animation = tween(15000, easing = LinearEasing),
+            animation = tween(25000, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
-        label = "offset2"
+        label = "secondaryOffset"
+    )
+
+    val tertiaryOffset by infiniteTransition.animateFloat(
+        initialValue = 180f,
+        targetValue = 540f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(30000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "tertiaryOffset"
+    )
+
+    val waveOffset by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(8000, easing = EaseInOutSine),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "waveOffset"
+    )
+
+    val breathingScale by infiniteTransition.animateFloat(
+        initialValue = 0.8f,
+        targetValue = 1.2f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(6000, easing = EaseInOutCubic),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "breathingScale"
     )
 
     Canvas(modifier = Modifier.fillMaxSize()) {
-        drawAnimatedBackground(offset1, offset2)
+        drawEnhancedMeshGradient(
+            primaryOffset = primaryOffset,
+            secondaryOffset = secondaryOffset,
+            tertiaryOffset = tertiaryOffset,
+            waveOffset = waveOffset,
+            breathingScale = breathingScale
+        )
     }
 }
 
-private fun DrawScope.drawAnimatedBackground(offset1: Float, offset2: Float) {
-    val brush = Brush.radialGradient(
+private fun DrawScope.drawEnhancedMeshGradient(
+    primaryOffset: Float,
+    secondaryOffset: Float,
+    tertiaryOffset: Float,
+    waveOffset: Float,
+    breathingScale: Float
+) {
+    val width = size.width
+    val height = size.height
+    val centerX = width / 2
+    val centerY = height / 2
+
+    // Base gradient background
+    val baseGradient = Brush.radialGradient(
         colors = listOf(
-            Color(0xFF6B46C1),
-            Color(0xFF3B82F6),
-            Color(0xFF1E40AF)
-        )
+            Color(0xFF1A1B3E),  // Deep purple-blue
+            Color(0xFF0F0F2A),  // Darker blue
+            Color(0xFF000814)   // Almost black
+        ),
+        center = Offset(centerX, centerY),
+        radius = maxOf(width, height) * 0.8f
     )
-    drawRect(brush = brush)
+    drawRect(brush = baseGradient)
 
-    // Animated circles
-    val centerX = size.width / 2
-    val centerY = size.height / 2
-
-    drawCircle(
-        color = Color(0x33A855F7),
-        radius = 200f,
-        center = androidx.compose.ui.geometry.Offset(
-            centerX + cos(Math.toRadians(offset1.toDouble())).toFloat() * 100,
-            centerY + sin(Math.toRadians(offset1.toDouble())).toFloat() * 100
-        )
+    // Multiple gradient orbs with different behaviors
+    val orbs = listOf(
+        // Large primary orb
+        GradientOrb(
+            colors = listOf(
+                Color(0x4A8B5CF6),  // Purple
+                Color(0x3A6366F1),  // Indigo
+                Color(0x20000000)   // Transparent
+            ),
+            center = Offset(
+                centerX + cos(Math.toRadians(primaryOffset.toDouble())).toFloat() * width * 0.3f,
+                centerY + sin(Math.toRadians(primaryOffset.toDouble())).toFloat() * height * 0.2f
+            ),
+            radius = 300f * breathingScale
+        ),
+        // Secondary orb with counter-rotation
+        GradientOrb(
+            colors = listOf(
+                Color(0x4A3B82F6),  // Blue
+                Color(0x3A06B6D4),  // Cyan
+                Color(0x20000000)
+            ),
+            center = Offset(
+                centerX + cos(Math.toRadians(secondaryOffset.toDouble())).toFloat() * width * 0.4f,
+                centerY + sin(Math.toRadians(secondaryOffset.toDouble())).toFloat() * height * 0.3f
+            ),
+            radius = 250f * (1.5f - breathingScale * 0.5f)
+        ),
+        // Tertiary orb with wave motion
+//        GradientOrb(
+//            colors = listOf(
+//                Color(0x4A10B981),  // Green
+//                Color(0x3A059669),  // Darker green
+//                Color(0x20000000)
+//            ),
+//            center = Offset(
+//                centerX + cos(Math.toRadians(tertiaryOffset.toDouble())).toFloat() * width * 0.25f +
+//                        sin(waveOffset * Math.PI * 2).toFloat() * 100f,
+//                centerY + sin(Math.toRadians(tertiaryOffset.toDouble())).toFloat() * height * 0.15f +
+//                        cos(waveOffset * Math.PI * 3).toFloat() * 80f
+//            ),
+//            radius = 200f
+//        ),
+        // Additional accent orbs
+//        GradientOrb(
+//            colors = listOf(
+//                Color(0x3AF59E0B),  // Amber
+//                Color(0x2AD97706),  // Orange
+//                Color(0x20000000)
+//            ),
+//            center = Offset(
+//                centerX + cos(Math.toRadians(primaryOffset * 1.5 + 90).toDouble()).toFloat() * width * 0.2f,
+//                centerY + sin(Math.toRadians(primaryOffset * 1.5 + 90).toDouble()).toFloat() * height * 0.2f
+//            ),
+//            radius = 150f * breathingScale
+//        ),
+//        GradientOrb(
+//            colors = listOf(
+//                Color(0x3AEC4899),  // Pink
+//                Color(0x2ADB2777),  // Rose
+//                Color(0x20000000)
+//            ),
+//            center = Offset(
+//                centerX + cos(Math.toRadians(secondaryOffset * 0.8 + 180).toDouble()).toFloat() * width * 0.35f,
+//                centerY + sin(Math.toRadians(secondaryOffset * 0.8 + 180).toDouble()).toFloat() * height * 0.25f
+//            ),
+//            radius = 180f * (2f - breathingScale)
+//        )
     )
 
-    drawCircle(
-        color = Color(0x333B82F6),
-        radius = 150f,
-        center = androidx.compose.ui.geometry.Offset(
-            centerX + cos(Math.toRadians(offset2.toDouble())).toFloat() * 150,
-            centerY + sin(Math.toRadians(offset2.toDouble())).toFloat() * 150
-        )
+    // Draw all orbs with blur effect
+    orbs.forEach { orb ->
+        // Create multiple overlapping circles for blur effect
+        val blurLayers = 35
+        for (layer in 0 until blurLayers) {
+            val layerRadius = orb.radius * (1f + layer * 0.3f)
+            val layerAlpha = (blurLayers - layer).toFloat() / blurLayers * 0.9f
+
+            val gradient = Brush.radialGradient(
+                colors = orb.colors.map { color ->
+                    color.copy(alpha = color.alpha * layerAlpha)
+                },
+                center = orb.center,
+                radius = layerRadius,
+                tileMode = TileMode.Clamp
+            )
+
+            // Irregular shape using multiple offset circles
+            for (i in 0..8) {
+                val angle = i * 45f
+                val offsetDistance = layerRadius * 0.1f * sin(waveOffset * Math.PI + i).toFloat()
+                val offsetX = cos(Math.toRadians(angle.toDouble())).toFloat() * offsetDistance
+                val offsetY = sin(Math.toRadians(angle.toDouble())).toFloat() * offsetDistance
+
+                drawCircle(
+                    brush = gradient,
+                    radius = layerRadius * (0.1f + sin(waveOffset * Math.PI + i).toFloat() * 0.1f),
+                    center = Offset(orb.center.x + offsetX, orb.center.y + offsetY)
+                )
+            }
+        }
+    }
+
+    // Add flowing wave patterns
+    drawWavePatterns(
+        width = width,
+        height = height,
+        waveOffset = waveOffset,
+        primaryOffset = primaryOffset
+    )
+
+    // Add subtle noise texture
+    drawNoiseTexture(
+        width = width,
+        height = height,
+        offset = primaryOffset
     )
 }
+
+private fun DrawScope.drawWavePatterns(
+    width: Float,
+    height: Float,
+    waveOffset: Float,
+    primaryOffset: Float
+) {
+    val waveHeight = 30f
+    val waveLength = width / 3f
+
+    // Create flowing wave lines
+    for (i in 0..2) {
+        val yPosition = height * (0.2f + i * 0.3f)
+        val path = Path().apply {
+            moveTo(0f, yPosition)
+
+            var x = 0f
+            while (x <= width) {
+                val waveY = yPosition +
+                        sin(((x / waveLength) + waveOffset + i * 0.5f) * Math.PI * 2).toFloat() * waveHeight *
+                        sin((primaryOffset + i * 60f) * Math.PI / 180f).toFloat() * 0.5f
+                lineTo(x, waveY)
+                x += 10f
+            }
+        }
+
+        drawPath(
+            path = path,
+            color = Color(0x15FFFFFF),
+            style = Stroke(width = 2f)
+        )
+    }
+}
+
+private fun DrawScope.drawNoiseTexture(
+    width: Float,
+    height: Float,
+    offset: Float
+) {
+    // Simple procedural noise effect
+    val noisePoints = 100
+    val random = kotlin.random.Random(42) // Fixed seed for consistency
+
+    repeat(noisePoints) { i ->
+        val angle = (offset + i * 3.6f) % 360f
+        val distance = random.nextFloat() * minOf(width, height) * 0.4f
+        val centerX = width / 2
+        val centerY = height / 2
+
+        val x = centerX + cos(Math.toRadians(angle.toDouble())).toFloat() * distance
+        val y = centerY + sin(Math.toRadians(angle.toDouble())).toFloat() * distance
+
+        drawCircle(
+            color = Color.White.copy(alpha = 0.02f + random.nextFloat() * 0.03f),
+            radius = random.nextFloat() * 3f + 1f,
+            center = Offset(x, y)
+        )
+    }
+}
+
+private data class GradientOrb(
+    val colors: List<Color>,
+    val center: Offset,
+    val radius: Float
+)
 
 @Composable
 private fun AnimatedGradientLine() {
