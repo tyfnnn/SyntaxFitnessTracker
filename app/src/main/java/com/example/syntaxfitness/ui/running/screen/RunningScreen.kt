@@ -20,142 +20,93 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.app.ActivityCompat
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.syntaxfitness.ui.running.component.LocationCard
+import com.example.syntaxfitness.ui.running.viewmodel.RunningViewModel
 import com.example.syntaxfitness.ui.theme.SyntaxFitnessTheme
-import com.example.syntaxfitness.utils.LocationUtils
 
 @Composable
-fun RunningScreen(modifier: Modifier = Modifier) {
+fun RunningScreen(
+    modifier: Modifier = Modifier,
+    viewModel: RunningViewModel = viewModel() // Automatische ViewModel-Erstellung
+) {
     val context = LocalContext.current
 
-    var isRunning by remember { mutableStateOf(false) }
-    var startLatitude by remember { mutableStateOf("--") }
-    var startLongitude by remember { mutableStateOf("--") }
-    var endLatitude by remember { mutableStateOf("--") }
-    var endLongitude by remember { mutableStateOf("--") }
+    // StateFlow beobachten - automatische Rekomposition bei Änderungen
+    val uiState by viewModel.uiState.collectAsState()
 
-    var hasLocationPermission by remember { mutableStateOf(false) }
-    var hasNotificationPermission by remember { mutableStateOf(true) } // Default true for older versions
-    var showPermissionDeniedMessage by remember { mutableStateOf(false) }
-    var isGettingLocation by remember { mutableStateOf(false) }
-
-    // New state for permission rationale dialog
-    var showPermissionRationaleDialog by remember { mutableStateOf(false) }
-
+    // Permission Launcher - bleibt in der UI, da es UI-spezifisch ist
     val requestPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
         val fineLocationGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] ?: false
         val coarseLocationGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] ?: false
-        val notificationGranted = permissions[Manifest.permission.POST_NOTIFICATIONS] ?: true // Default true for older versions
 
-        hasLocationPermission = fineLocationGranted || coarseLocationGranted
-        hasNotificationPermission = notificationGranted
-
-        if (!hasLocationPermission) {
-            showPermissionDeniedMessage = true
-
-            // Check if we should show rationale for the next time
-            // This helps us prepare for future permission requests
-            val shouldShowRationale = ActivityCompat.shouldShowRequestPermissionRationale(
-                context as ComponentActivity,
-                Manifest.permission.ACCESS_FINE_LOCATION
-            ) || ActivityCompat.shouldShowRequestPermissionRationale(
-                context as ComponentActivity,
-                Manifest.permission.ACCESS_COARSE_LOCATION
-            )
-
-            // Note: At this point, we've already been denied, so we could show
-            // additional explanation UI if needed
-        } else {
-            showPermissionDeniedMessage = false
-        }
+        // Berechtigung an ViewModel weiterleiten
+        viewModel.updateLocationPermission(fineLocationGranted, coarseLocationGranted)
     }
 
-    // Function to handle permission requests with rationale check
+    // Funktion für Berechtigungsanfragen - vereinfacht durch ViewModel
     fun handlePermissionRequest() {
-        // Build the list of permissions to request
-        val permissionsToRequest = mutableListOf(
-            Manifest.permission.ACCESS_FINE_LOCATION,
+        val shouldShowRationale = ActivityCompat.shouldShowRequestPermissionRationale(
+            context as androidx.activity.ComponentActivity,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        ) || ActivityCompat.shouldShowRequestPermissionRationale(
+            context as androidx.activity.ComponentActivity,
             Manifest.permission.ACCESS_COARSE_LOCATION
         )
 
-        // Only add notification permission for Android 13 (API 33) and above
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            permissionsToRequest.add(Manifest.permission.POST_NOTIFICATIONS)
-        }
-
-        // Check if we should show rationale before requesting permission
-        val shouldShowRationale = ActivityCompat.shouldShowRequestPermissionRationale(
-            context as ComponentActivity,
-            Manifest.permission.ACCESS_FINE_LOCATION
-        ) || ActivityCompat.shouldShowRequestPermissionRationale(
-            context as ComponentActivity,
-            Manifest.permission.ACCESS_COARSE_LOCATION
-        ) || (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-                ActivityCompat.shouldShowRequestPermissionRationale(
-                    context as ComponentActivity,
-                    Manifest.permission.POST_NOTIFICATIONS
-                ))
-
         if (shouldShowRationale) {
-            // Show rationale dialog first
-            showPermissionRationaleDialog = true
+            viewModel.setPermissionRationaleDialogVisibility(true)
         } else {
-            // Request permission directly
-            requestPermissionLauncher.launch(permissionsToRequest.toTypedArray())
+            requestPermissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+                )
+            )
         }
     }
 
-    // Permission Rationale Dialog
-    if (showPermissionRationaleDialog) {
+    // Permission Rationale Dialog - gesteuert durch ViewModel-Zustand
+    if (uiState.showPermissionRationaleDialog) {
         AlertDialog(
             onDismissRequest = {
-                showPermissionRationaleDialog = false
+                viewModel.setPermissionRationaleDialogVisibility(false)
             },
             title = {
                 Text(
-                    text = "Berechtigungen erforderlich",
+                    text = "Standortberechtigung erforderlich",
                     fontWeight = FontWeight.Bold
                 )
             },
             text = {
                 Text(
-                    text = buildString {
-                        append("Diese App benötigt folgende Berechtigungen:\n\n")
-                        append("• Standort: Um Ihre Laufstrecke zu verfolgen\n")
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                            append("• Benachrichtigungen: Um Sie über Laufstatus zu informieren\n")
-                        }
-                        append("\nIhre Daten werden nur lokal verwendet und nicht weitergegeben.")
-                    },
+                    text = "Diese App benötigt Zugriff auf Ihren Standort, um Ihre Laufstrecke zu verfolgen. " +
+                            "Wir verwenden GPS-Daten nur während aktiver Läufe, um Start- und Endpositionen " +
+                            "zu erfassen. Ihre Standortdaten werden nicht gespeichert oder weitergegeben.",
                     lineHeight = 20.sp
                 )
             },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        showPermissionRationaleDialog = false
-                        // Now request the permission after showing rationale
-                        val permissionsToRequest = mutableListOf(
-                            Manifest.permission.ACCESS_FINE_LOCATION,
-                            Manifest.permission.ACCESS_COARSE_LOCATION
+                        viewModel.setPermissionRationaleDialogVisibility(false)
+                        requestPermissionLauncher.launch(
+                            arrayOf(
+                                Manifest.permission.ACCESS_FINE_LOCATION,
+                                Manifest.permission.ACCESS_COARSE_LOCATION
+                            )
                         )
-
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                            permissionsToRequest.add(Manifest.permission.POST_NOTIFICATIONS)
-                        }
-
-                        requestPermissionLauncher.launch(permissionsToRequest.toTypedArray())
                     }
                 ) {
-                    Text("Berechtigungen erteilen")
+                    Text("Berechtigung erteilen")
                 }
             },
             dismissButton = {
                 TextButton(
                     onClick = {
-                        showPermissionRationaleDialog = false
+                        viewModel.setPermissionRationaleDialogVisibility(false)
                     }
                 ) {
                     Text("Abbrechen")
@@ -164,6 +115,7 @@ fun RunningScreen(modifier: Modifier = Modifier) {
         )
     }
 
+    // Haupt-UI - komplett zustandslos, alle Daten kommen vom ViewModel
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -185,8 +137,8 @@ fun RunningScreen(modifier: Modifier = Modifier) {
             verticalArrangement = Arrangement.spacedBy(24.dp),
             modifier = Modifier.weight(1f)
         ) {
-            // Permission status display
-            if (showPermissionDeniedMessage) {
+            // Permission Fehlermeldung - gesteuert durch ViewModel
+            if (uiState.showPermissionDeniedMessage) {
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -200,45 +152,70 @@ fun RunningScreen(modifier: Modifier = Modifier) {
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            text = buildString {
-                                append("Berechtigungen erforderlich:\n")
-                                if (!hasLocationPermission) append("• Standort für GPS-Tracking\n")
-                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !hasNotificationPermission) {
-                                    append("• Benachrichtigungen für Updates")
-                                }
-                            },
+                            text = "Standortberechtigung erforderlich für GPS-Tracking",
                             color = MaterialTheme.colorScheme.onErrorContainer,
                             textAlign = TextAlign.Center,
                             modifier = Modifier.padding(bottom = 8.dp)
                         )
 
-                        // Add explanation text in the error card
                         Text(
                             text = "Tippen Sie auf 'Berechtigung anfordern' für weitere Informationen.",
                             color = MaterialTheme.colorScheme.onErrorContainer,
                             textAlign = TextAlign.Center,
                             fontSize = 12.sp,
-                            fontStyle = FontStyle.Italic
+                            fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
                         )
                     }
                 }
             }
 
-            // Start Location Card
+            // Start Location Card - Daten direkt aus dem ViewModel
             LocationCard(
                 title = "Start Position",
-                latitude = startLatitude,
-                longitude = startLongitude,
+                latitude = uiState.startLatitude,
+                longitude = uiState.startLongitude,
                 backgroundColor = MaterialTheme.colorScheme.primaryContainer
             )
 
-            // End Location Card
+            // End Location Card - Daten direkt aus dem ViewModel
             LocationCard(
                 title = "End Position",
-                latitude = endLatitude,
-                longitude = endLongitude,
+                latitude = uiState.endLatitude,
+                longitude = uiState.endLongitude,
                 backgroundColor = MaterialTheme.colorScheme.secondaryContainer
             )
+
+            // Distanzanzeige - neue Funktion durch ViewModel möglich
+            val distance = viewModel.calculateDistance()
+            if (distance != null) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.tertiaryContainer
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "Distanz",
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer
+                        )
+                        Text(
+                            text = "${String.format("%.1f", distance)} m",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer
+                        )
+                    }
+                }
+            }
         }
 
         // Control Button Section
@@ -246,70 +223,32 @@ fun RunningScreen(modifier: Modifier = Modifier) {
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.padding(bottom = 32.dp)
         ) {
-            // Permission Request Button (only shown when no permission is granted)
-            val needsPermissions = !hasLocationPermission ||
-                    (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !hasNotificationPermission)
-
-            if (needsPermissions) {
+            // Permission Request Button - nur anzeigen wenn nötig
+            if (!uiState.hasLocationPermission) {
                 OutlinedButton(
-                    onClick = {
-                        // Use our new permission handling function
-                        handlePermissionRequest()
-                    },
+                    onClick = { handlePermissionRequest() },
                     modifier = Modifier.padding(bottom = 16.dp)
                 ) {
-                    Text("Berechtigungen anfordern")
+                    Text("Standortberechtigung anfordern")
                 }
             }
 
-            // Start/Stop Button
+            // Start/Stop Button - komplett über ViewModel gesteuert
             Button(
                 onClick = {
-                    // First check if we have location permission
-                    if (!hasLocationPermission) {
-                        // Use our new permission handling function
+                    if (!uiState.hasLocationPermission) {
                         handlePermissionRequest()
-                        return@Button
-                    }
-
-                    if (!isRunning) {
-                        // Start run - get actual GPS location
-                        isRunning = true
-                        isGettingLocation = true
-
-                        // Clear previous end location
-                        endLatitude = "--"
-                        endLongitude = "--"
-
-                        // Use LocationUtils to get the current position
-                        LocationUtils.getLocation(context) { location ->
-                            // This callback runs when we successfully get the location
-                            // Format the coordinates to 4 decimal places for display
-                            startLatitude = String.format("%.4f", location.latitude)
-                            startLongitude = String.format("%.4f", location.longitude)
-                            isGettingLocation = false
-                        }
                     } else {
-                        // End run - get final GPS location
-                        isGettingLocation = true
-
-                        // Use LocationUtils to get the current position for end location
-                        LocationUtils.getLocation(context) { location ->
-                            // This callback runs when we successfully get the location
-                            // Format the coordinates to 4 decimal places for display
-                            endLatitude = String.format("%.4f", location.latitude)
-                            endLongitude = String.format("%.4f", location.longitude)
-                            isGettingLocation = false
-                            isRunning = false
-                        }
+                        // Einfacher Aufruf - alle Logik im ViewModel
+                        viewModel.toggleRunning(context)
                     }
                 },
-                enabled = !isGettingLocation, // Disable button while getting location
+                enabled = !uiState.isGettingLocation,
                 modifier = Modifier
                     .size(120.dp)
                     .padding(8.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = if (isRunning)
+                    containerColor = if (uiState.isRunning)
                         MaterialTheme.colorScheme.error
                     else
                         MaterialTheme.colorScheme.primary
@@ -317,23 +256,16 @@ fun RunningScreen(modifier: Modifier = Modifier) {
                 shape = RoundedCornerShape(60.dp)
             ) {
                 Text(
-                    text = if (isRunning) "STOP" else "START",
+                    text = if (uiState.isRunning) "STOP" else "START",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.White
                 )
             }
 
-            // Status Text
+            // Status Text - direkt aus dem ViewModel
             Text(
-                text = when {
-                    !hasLocationPermission -> "Standortberechtigung erforderlich"
-                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !hasNotificationPermission ->
-                        "Benachrichtigungsberechtigung empfohlen"
-                    isGettingLocation -> "GPS-Position wird ermittelt..."
-                    isRunning -> "Lauf läuft..."
-                    else -> "Bereit zum Starten"
-                },
+                text = uiState.statusMessage,
                 fontSize = 16.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 8.dp),
