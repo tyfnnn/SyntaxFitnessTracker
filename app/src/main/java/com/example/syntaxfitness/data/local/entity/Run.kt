@@ -2,7 +2,7 @@ package com.example.syntaxfitness.data.local.entity
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
-import java.time.LocalDateTime
+import java.util.Date
 
 @Entity(tableName = "runs")
 data class RunEntity(
@@ -13,7 +13,7 @@ data class RunEntity(
     val endLatitude: Double,
     val endLongitude: Double,
     val distance: Float,
-    val startTime: LocalDateTime,
-    val endTime: LocalDateTime,
+    val startTime: Date,
+    val endTime: Date,
     val duration: Long // in milliseconds
 )
