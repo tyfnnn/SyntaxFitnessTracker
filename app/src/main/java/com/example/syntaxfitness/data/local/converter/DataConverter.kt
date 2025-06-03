@@ -1,9 +1,9 @@
-package com.example.syntaxfitness.data.local.converter
+package com.example.syntaxfitness.data.local.database
 
 import androidx.room.TypeConverter
 import java.util.Date
 
-class DateConverters {
+class Converters {
     @TypeConverter
     fun fromTimestamp(value: Long?): Date? {
         return value?.let { Date(it) }

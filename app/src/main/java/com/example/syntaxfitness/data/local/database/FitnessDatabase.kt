@@ -5,7 +5,6 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
-import com.example.syntaxfitness.data.local.converter.DateConverters
 import com.example.syntaxfitness.data.local.dao.RunDao
 import com.example.syntaxfitness.data.local.entity.RunEntity
 
@@ -14,7 +13,7 @@ import com.example.syntaxfitness.data.local.entity.RunEntity
     version = 1,
     exportSchema = false
 )
-@TypeConverters(DateConverters::class)
+@TypeConverters(Converters::class)
 abstract class FitnessDatabase : RoomDatabase() {
     abstract fun runDao(): RunDao
 
