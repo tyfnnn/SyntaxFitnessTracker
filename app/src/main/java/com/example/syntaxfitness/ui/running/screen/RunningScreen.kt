@@ -1,32 +1,43 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
 package com.example.syntaxfitness.ui.running.screen
 
 import android.Manifest
 import android.os.Build
-import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.DirectionsRun
+import androidx.compose.material.icons.automirrored.filled.TrendingUp
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.*
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.app.ActivityCompat
-import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.syntaxfitness.ui.running.component.LocationCard
-import com.example.syntaxfitness.ui.running.component.RunHistoryItem
 import com.example.syntaxfitness.ui.running.viewmodel.RunningViewModel
-import com.example.syntaxfitness.ui.theme.SyntaxFitnessTheme
 import org.koin.androidx.compose.koinViewModel
+import kotlin.math.cos
+import kotlin.math.sin
 
 @Composable
 fun RunningScreen(
@@ -86,320 +97,644 @@ fun RunningScreen(
         }
     }
 
-    // Permission dialogs (unchanged)
+    // Permission dialogs
     if (uiState.showPermissionRationaleDialog) {
-        AlertDialog(
-            onDismissRequest = { viewModel.setPermissionRationaleDialogVisibility(false) },
-            title = { Text("Standortberechtigung erforderlich", fontWeight = FontWeight.Bold) },
-            text = {
-                Text(
-                    "Diese App benötigt Zugriff auf Ihren Standort, um Ihre Laufstrecke zu verfolgen. " +
-                            "Wir verwenden GPS-Daten nur während aktiver Läufe, um Start- und Endpositionen " +
-                            "zu erfassen. Ihre Standortdaten werden nicht gespeichert oder weitergegeben.",
-                    lineHeight = 20.sp
-                )
+        GlassmorphismDialog(
+            title = "Standortberechtigung erforderlich",
+            text = "Diese App benötigt Zugriff auf Ihren Standort, um Ihre Laufstrecke zu verfolgen.",
+            onConfirm = {
+                viewModel.setPermissionRationaleDialogVisibility(false)
+                val permissionsToRequest = viewModel.getMissingPermissions()
+                requestPermissionLauncher.launch(permissionsToRequest.toTypedArray())
             },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        viewModel.setPermissionRationaleDialogVisibility(false)
-                        val permissionsToRequest = viewModel.getMissingPermissions()
-                        requestPermissionLauncher.launch(permissionsToRequest.toTypedArray())
-                    }
-                ) { Text("Berechtigung erteilen") }
-            },
-            dismissButton = {
-                TextButton(onClick = { viewModel.setPermissionRationaleDialogVisibility(false) }) {
-                    Text("Abbrechen")
-                }
-            }
+            onDismiss = { viewModel.setPermissionRationaleDialogVisibility(false) }
         )
     }
 
     if (uiState.showNotificationRationaleDialog) {
-        AlertDialog(
-            onDismissRequest = { viewModel.setNotificationRationaleDialogVisibility(false) },
-            title = { Text("Benachrichtigungsberechtigung", fontWeight = FontWeight.Bold) },
-            text = {
-                Text(
-                    "Diese App möchte Ihnen Benachrichtigungen senden, um Sie über " +
-                            "den Start und das Ende Ihrer Läufe zu informieren.",
-                    lineHeight = 20.sp
-                )
+        GlassmorphismDialog(
+            title = "Benachrichtigungsberechtigung",
+            text = "Diese App möchte Ihnen Benachrichtigungen über Ihre Läufe senden.",
+            onConfirm = {
+                viewModel.setNotificationRationaleDialogVisibility(false)
+                val permissionsToRequest = viewModel.getMissingPermissions()
+                requestPermissionLauncher.launch(permissionsToRequest.toTypedArray())
             },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        viewModel.setNotificationRationaleDialogVisibility(false)
-                        val permissionsToRequest = viewModel.getMissingPermissions()
-                        requestPermissionLauncher.launch(permissionsToRequest.toTypedArray())
-                    }
-                ) { Text("Berechtigung erteilen") }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = {
-                        viewModel.setNotificationRationaleDialogVisibility(false)
-                        if (uiState.hasLocationPermission) {
-                            viewModel.toggleRunning(context)
-                        }
-                    }
-                ) { Text("Ohne Benachrichtigungen fortfahren") }
+            onDismiss = {
+                viewModel.setNotificationRationaleDialogVisibility(false)
+                if (uiState.hasLocationPermission) {
+                    viewModel.toggleRunning(context)
+                }
             }
         )
     }
 
-    // Main UI with scrollable content
-    LazyColumn(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        item {
-            // Header
-            Text(
-                text = "Lauf Tracker",
-                fontSize = 28.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(top = 32.dp, bottom = 16.dp)
-            )
-        }
+    Box(modifier = modifier.fillMaxSize()) {
+        // Animated gradient background
+        AnimatedGradientBackground()
 
-        // Statistics Section
-        if (uiState.totalRuns > 0) {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
             item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant
-                    )
+                // Header with animated gradient line
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(top = 32.dp, bottom = 16.dp)
                 ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = "Statistiken",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.padding(bottom = 12.dp)
-                        )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceEvenly
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(
-                                    text = "${uiState.totalRuns}",
-                                    fontSize = 20.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                                Text("Läufe", fontSize = 12.sp)
-                            }
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(
-                                    text = "${String.format("%.1f", uiState.totalDistance)}m",
-                                    fontSize = 20.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                                Text("Gesamt", fontSize = 12.sp)
-                            }
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(
-                                    text = "${String.format("%.1f", uiState.averageDistance)}m",
-                                    fontSize = 20.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                                Text("Durchschnitt", fontSize = 12.sp)
-                            }
-                        }
-                    }
+                    Text(
+                        text = "SyntaxFitness",
+                        fontSize = 32.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                    AnimatedGradientLine()
                 }
             }
-        }
 
-        // Permission info card
-        if (uiState.showPermissionDeniedMessage) {
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant
-                    )
-                ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
+            // Statistics cards
+            if (uiState.totalRuns > 0) {
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Text(
-                            text = when {
-                                !uiState.hasLocationPermission && !uiState.hasNotificationPermission ->
-                                    "Standort- und Benachrichtigungsberechtigungen werden benötigt"
-                                !uiState.hasLocationPermission ->
-                                    "Standortberechtigung wird für GPS-Tracking benötigt"
-                                !uiState.hasNotificationPermission ->
-                                    "Benachrichtigungsberechtigung empfohlen für Lauf-Updates"
-                                else -> "Alle Berechtigungen erteilt"
-                            },
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(bottom = 8.dp)
+                        StatCard(
+                            title = "Läufe",
+                            value = "${uiState.totalRuns}",
+                            icon = Icons.AutoMirrored.Filled.DirectionsRun,
+                            modifier = Modifier.weight(1f)
+                        )
+                        StatCard(
+                            title = "Gesamt",
+                            value = "${String.format("%.1f", uiState.totalDistance)}km",
+                            icon = Icons.AutoMirrored.Filled.TrendingUp,
+                            modifier = Modifier.weight(1f)
                         )
                     }
                 }
             }
-        }
 
-        // Location Cards
-        item {
-            LocationCard(
-                title = "Start Position",
-                latitude = uiState.startLatitude,
-                longitude = uiState.startLongitude,
-                backgroundColor = MaterialTheme.colorScheme.primaryContainer
-            )
-        }
-
-        item {
-            LocationCard(
-                title = "End Position",
-                latitude = uiState.endLatitude,
-                longitude = uiState.endLongitude,
-                backgroundColor = MaterialTheme.colorScheme.secondaryContainer
-            )
-        }
-
-        // Distance Display
-        val distance = viewModel.calculateDistance()
-        if (distance != null) {
+            // Main running control card
             item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.tertiaryContainer
-                    )
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = "Distanz",
-                            fontSize = 14.sp,
-                            color = MaterialTheme.colorScheme.onTertiaryContainer
-                        )
-                        Text(
-                            text = "${String.format("%.1f", distance)} m",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onTertiaryContainer
-                        )
-                    }
-                }
-            }
-        }
-
-        // Control Button
-        item {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(vertical = 16.dp)
-            ) {
-                Button(
-                    onClick = {
+                MainRunningCard(
+                    isRunning = uiState.isRunning,
+                    isGettingLocation = uiState.isGettingLocation,
+                    statusMessage = uiState.statusMessage,
+                    onToggleRun = {
                         if (!uiState.hasLocationPermission) {
                             requestPermissionsIfNeeded()
                         } else {
                             viewModel.toggleRunning(context)
                         }
-                    },
-                    enabled = !uiState.isGettingLocation,
-                    modifier = Modifier.size(140.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (uiState.isRunning)
-                            MaterialTheme.colorScheme.error
-                        else
-                            MaterialTheme.colorScheme.primary
-                    ),
-                    shape = RoundedCornerShape(70.dp)
-                ) {
+                    }
+                )
+            }
+
+            // Location cards
+            item {
+                LocationCardsSection(
+                    startLat = uiState.startLatitude,
+                    startLng = uiState.startLongitude,
+                    endLat = uiState.endLatitude,
+                    endLng = uiState.endLongitude
+                )
+            }
+
+            // Distance display
+            val distance = viewModel.calculateDistance()
+            if (distance != null) {
+                item {
+                    DistanceCard(distance = distance)
+                }
+            }
+
+            // Run history
+            if (uiState.runHistory.isNotEmpty()) {
+                item {
                     Text(
-                        text = if (uiState.isRunning) "Lauf beenden" else "Lauf starten",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
+                        text = "Lauf-Historie",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.SemiBold,
                         color = Color.White,
-                        textAlign = TextAlign.Center
+                        modifier = Modifier.padding(vertical = 8.dp)
                     )
                 }
 
-                Text(
-                    text = uiState.statusMessage,
-                    fontSize = 16.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 8.dp),
-                    textAlign = TextAlign.Center
-                )
-            }
-        }
-
-        // Run History Section
-        if (uiState.runHistory.isNotEmpty()) {
-            item {
-                Text(
-                    text = "Lauf-Historie",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
-                )
-            }
-
-            items(
-                count = minOf(uiState.runHistory.size, 10),
-                key = { index -> uiState.runHistory[index].id }
-            ) { index ->
-                val run = uiState.runHistory[index]
-                RunHistoryItem(
-                    run = run,
-                    onItemClick = {
-                        // Handle click - could navigate to detail screen
-                        // For now, just log
-                        println("Clicked on run ${run.id}")
-                    }
-                )
-            }
-
-            if (uiState.runHistory.size > 10) {
-                item {
-                    TextButton(
-                        onClick = { /* Navigate to full history screen */ },
-                        modifier = Modifier.padding(8.dp)
+                itemsIndexed(
+                    items = uiState.runHistory.take(5),
+                    key = { _, run -> run.id }
+                ) { index, run ->
+                    AnimatedVisibility(
+                        visible = true,
+                        enter = fadeIn(
+                            animationSpec = tween(
+                                durationMillis = 300,
+                                delayMillis = index * 100
+                            )
+                        ) + slideInVertically(
+                            animationSpec = tween(
+                                durationMillis = 300,
+                                delayMillis = index * 100
+                            )
+                        )
                     ) {
-                        Text("Alle ${uiState.runHistory.size} Läufe anzeigen")
+                        GlassmorphismRunHistoryItem(run = run)
                     }
                 }
             }
-        }
 
-        // Bottom padding
-        item {
-            Spacer(modifier = Modifier.height(32.dp))
+            item {
+                Spacer(modifier = Modifier.height(32.dp))
+            }
         }
     }
 }
 
-@Preview(showBackground = true)
 @Composable
-fun RunningScreenPreview() {
-    SyntaxFitnessTheme {
-        RunningScreen()
+private fun AnimatedGradientBackground() {
+    val infiniteTransition = rememberInfiniteTransition(label = "background")
+
+    val offset1 by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(10000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "offset1"
+    )
+
+    val offset2 by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(15000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "offset2"
+    )
+
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        drawAnimatedBackground(offset1, offset2)
+    }
+}
+
+private fun DrawScope.drawAnimatedBackground(offset1: Float, offset2: Float) {
+    val brush = Brush.radialGradient(
+        colors = listOf(
+            Color(0xFF6B46C1),
+            Color(0xFF3B82F6),
+            Color(0xFF1E40AF)
+        )
+    )
+    drawRect(brush = brush)
+
+    // Animated circles
+    val centerX = size.width / 2
+    val centerY = size.height / 2
+
+    drawCircle(
+        color = Color(0x33A855F7),
+        radius = 200f,
+        center = androidx.compose.ui.geometry.Offset(
+            centerX + cos(Math.toRadians(offset1.toDouble())).toFloat() * 100,
+            centerY + sin(Math.toRadians(offset1.toDouble())).toFloat() * 100
+        )
+    )
+
+    drawCircle(
+        color = Color(0x333B82F6),
+        radius = 150f,
+        center = androidx.compose.ui.geometry.Offset(
+            centerX + cos(Math.toRadians(offset2.toDouble())).toFloat() * 150,
+            centerY + sin(Math.toRadians(offset2.toDouble())).toFloat() * 150
+        )
+    )
+}
+
+@Composable
+private fun AnimatedGradientLine() {
+    val infiniteTransition = rememberInfiniteTransition(label = "gradient_line")
+    val animatedProgress by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2000, easing = EaseInOutCubic),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "progress"
+    )
+
+    Box(
+        modifier = Modifier
+            .width(80.dp)
+            .height(4.dp)
+            .clip(RoundedCornerShape(2.dp))
+            .background(
+                brush = Brush.horizontalGradient(
+                    colors = listOf(
+                        Color(0xFF8B5CF6).copy(alpha = animatedProgress),
+                        Color(0xFF3B82F6),
+                        Color(0xFF06B6D4).copy(alpha = animatedProgress)
+                    )
+                )
+            )
+    )
+}
+
+@Composable
+private fun StatCard(
+    title: String,
+    value: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    modifier: Modifier = Modifier
+) {
+    val scale by animateFloatAsState(
+        targetValue = 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow
+        ),
+        label = "scale"
+    )
+
+    Card(
+        modifier = modifier
+            .scale(scale)
+            .clickable { },
+        colors = CardDefaults.cardColors(
+            containerColor = Color.White.copy(alpha = 0.1f)
+        ),
+        shape = RoundedCornerShape(20.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .padding(16.dp)
+                .fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = Color(0xFF8B5CF6),
+                modifier = Modifier
+                    .size(24.dp)
+                    .padding(bottom = 8.dp)
+            )
+            Text(
+                text = value,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
+            )
+            Text(
+                text = title,
+                fontSize = 12.sp,
+                color = Color.White.copy(alpha = 0.7f)
+            )
+        }
+    }
+}
+
+@Composable
+private fun MainRunningCard(
+    isRunning: Boolean,
+    isGettingLocation: Boolean,
+    statusMessage: String,
+    onToggleRun: () -> Unit
+) {
+    val buttonScale by animateFloatAsState(
+        targetValue = if (isRunning) 1.05f else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy
+        ),
+        label = "button_scale"
+    )
+
+    val pulseInfinite = rememberInfiniteTransition(label = "pulse")
+    val pulseScale by pulseInfinite.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1000),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulse_scale"
+    )
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = Color.White.copy(alpha = 0.15f)
+        ),
+        shape = RoundedCornerShape(24.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .padding(32.dp)
+                .fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            // Status text
+            Text(
+                text = statusMessage,
+                fontSize = 16.sp,
+                color = when {
+                    isRunning -> Color(0xFF10B981)
+                    isGettingLocation -> Color(0xFFF59E0B)
+                    else -> Color.White.copy(alpha = 0.8f)
+                },
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(bottom = 24.dp)
+            )
+
+            // Main action button
+            Box(
+                contentAlignment = Alignment.Center
+            ) {
+                // Pulse ring for running state
+                if (isRunning) {
+                    Box(
+                        modifier = Modifier
+                            .size(160.dp)
+                            .scale(pulseScale)
+                            .clip(CircleShape)
+                            .background(
+                                Color(0xFF10B981).copy(alpha = 0.3f)
+                            )
+                    )
+                }
+
+                FloatingActionButton(
+                    onClick = onToggleRun,
+                    modifier = Modifier
+                        .size(120.dp)
+                        .scale(buttonScale),
+                    containerColor = if (isRunning) {
+                        Color(0xFFEF4444)
+                    } else {
+                        Color(0xFF10B981)
+                    },
+                    shape = CircleShape
+                ) {
+                    if (isGettingLocation) {
+                        CircularProgressIndicator(
+                            color = Color.White,
+                            modifier = Modifier.size(32.dp)
+                        )
+                    } else {
+                        Icon(
+                            imageVector = if (isRunning) Icons.Default.Stop else Icons.Default.PlayArrow,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(40.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LocationCardsSection(
+    startLat: String,
+    startLng: String,
+    endLat: String,
+    endLng: String
+) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        LocationCard(
+            title = "Start Position",
+            latitude = startLat,
+            longitude = startLng,
+            iconTint = Color(0xFF10B981)
+        )
+
+        LocationCard(
+            title = "End Position",
+            latitude = endLat,
+            longitude = endLng,
+            iconTint = Color(0xFFEF4444)
+        )
+    }
+}
+
+@Composable
+private fun LocationCard(
+    title: String,
+    latitude: String,
+    longitude: String,
+    iconTint: Color
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = Color.White.copy(alpha = 0.1f)
+        ),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(bottom = 12.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.LocationOn,
+                    contentDescription = null,
+                    tint = iconTint,
+                    modifier = Modifier
+                        .size(20.dp)
+                        .padding(end = 8.dp)
+                )
+                Text(
+                    text = title,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = Color.White
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = "Breitengrad",
+                        fontSize = 12.sp,
+                        color = Color.White.copy(alpha = 0.6f)
+                    )
+                    Text(
+                        text = latitude,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Color.White,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                    )
+                }
+
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = "Längengrad",
+                        fontSize = 12.sp,
+                        color = Color.White.copy(alpha = 0.6f)
+                    )
+                    Text(
+                        text = longitude,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Color.White,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DistanceCard(distance: Float) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = Color(0xFF8B5CF6).copy(alpha = 0.2f)
+        ),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .padding(16.dp)
+                .fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "Distanz",
+                fontSize = 14.sp,
+                color = Color.White.copy(alpha = 0.8f)
+            )
+            Text(
+                text = "${String.format("%.1f", distance)} m",
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
+            )
+        }
+    }
+}
+
+@Composable
+private fun GlassmorphismRunHistoryItem(
+    run: com.example.syntaxfitness.data.local.entity.RunEntity
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { },
+        colors = CardDefaults.cardColors(
+            containerColor = Color.White.copy(alpha = 0.08f)
+        ),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = java.text.SimpleDateFormat("dd.MM.yyyy", java.util.Locale.getDefault()).format(run.startTime),
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 16.sp,
+                    color = Color.White
+                )
+                Text(
+                    text = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(run.startTime) +
+                            " - " +
+                            java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(run.endTime),
+                    fontSize = 14.sp,
+                    color = Color.White.copy(alpha = 0.7f)
+                )
+            }
+
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    text = String.format("%.1f m", run.distance),
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 16.sp,
+                    color = Color(0xFF8B5CF6)
+                )
+                Text(
+                    text = formatDuration(run.duration),
+                    fontSize = 14.sp,
+                    color = Color.White.copy(alpha = 0.7f)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun GlassmorphismDialog(
+    title: String,
+    text: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = title,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
+            )
+        },
+        text = {
+            Text(
+                text = text,
+                color = Color.White.copy(alpha = 0.9f),
+                lineHeight = 20.sp
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text("Berechtigung erteilen", color = Color(0xFF8B5CF6))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Abbrechen", color = Color.White.copy(alpha = 0.7f))
+            }
+        },
+        containerColor = Color.Black.copy(alpha = 0.8f),
+        shape = RoundedCornerShape(20.dp)
+    )
+}
+
+private fun formatDuration(durationMillis: Long): String {
+    val seconds = (durationMillis / 1000) % 60
+    val minutes = (durationMillis / (1000 * 60)) % 60
+    val hours = (durationMillis / (1000 * 60 * 60))
+
+    return if (hours > 0) {
+        String.format("%d:%02d:%02d", hours, minutes, seconds)
+    } else {
+        String.format("%d:%02d", minutes, seconds)
     }
 }
