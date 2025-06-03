@@ -1,8 +1,6 @@
 package com.example.syntaxfitness.ui.running.screen
 
 import android.Manifest
-import android.os.Build
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
@@ -28,14 +26,14 @@ import com.example.syntaxfitness.ui.theme.SyntaxFitnessTheme
 @Composable
 fun RunningScreen(
     modifier: Modifier = Modifier,
-    viewModel: RunningViewModel = viewModel() // Automatische ViewModel-Erstellung
+    viewModel: RunningViewModel = viewModel()
 ) {
     val context = LocalContext.current
 
     // StateFlow beobachten - automatische Rekomposition bei Änderungen
     val uiState by viewModel.uiState.collectAsState()
 
-    // Permission Launcher - bleibt in der UI, da es UI-spezifisch ist
+    // Permission Launcher - wird jetzt nur bei Button-Klick ausgelöst
     val requestPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
@@ -44,10 +42,15 @@ fun RunningScreen(
 
         // Berechtigung an ViewModel weiterleiten
         viewModel.updateLocationPermission(fineLocationGranted, coarseLocationGranted)
+
+        // Wenn Berechtigung erteilt wurde, starte automatisch den Lauf
+        if (fineLocationGranted || coarseLocationGranted) {
+            viewModel.toggleRunning(context)
+        }
     }
 
-    // Funktion für Berechtigungsanfragen - vereinfacht durch ViewModel
-    fun handlePermissionRequest() {
+    // Funktion für Berechtigungsanfragen
+    fun requestPermissionsIfNeeded() {
         val shouldShowRationale = ActivityCompat.shouldShowRequestPermissionRationale(
             context as androidx.activity.ComponentActivity,
             Manifest.permission.ACCESS_FINE_LOCATION
@@ -68,7 +71,7 @@ fun RunningScreen(
         }
     }
 
-    // Permission Rationale Dialog - gesteuert durch ViewModel-Zustand
+    // Permission Rationale Dialog
     if (uiState.showPermissionRationaleDialog) {
         AlertDialog(
             onDismissRequest = {
@@ -115,7 +118,7 @@ fun RunningScreen(
         )
     }
 
-    // Haupt-UI - komplett zustandslos, alle Daten kommen vom ViewModel
+    // Haupt-UI - vereinfacht durch Entfernung des separaten Permission-Buttons
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -137,14 +140,14 @@ fun RunningScreen(
             verticalArrangement = Arrangement.spacedBy(24.dp),
             modifier = Modifier.weight(1f)
         ) {
-            // Permission Fehlermeldung - gesteuert durch ViewModel
+            // Permission Fehlermeldung - nur noch als Info, nicht mehr als Blocker
             if (uiState.showPermissionDeniedMessage) {
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp),
                     colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.errorContainer
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
                     )
                 ) {
                     Column(
@@ -152,24 +155,24 @@ fun RunningScreen(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            text = "Standortberechtigung erforderlich für GPS-Tracking",
-                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            text = "Standortberechtigung wird für GPS-Tracking benötigt",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center,
                             modifier = Modifier.padding(bottom = 8.dp)
                         )
 
                         Text(
-                            text = "Tippen Sie auf 'Berechtigung anfordern' für weitere Informationen.",
-                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            text = "Tippen Sie auf 'Lauf starten' um die Berechtigung anzufordern.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center,
                             fontSize = 12.sp,
-                            fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                            fontStyle = FontStyle.Italic
                         )
                     }
                 }
             }
 
-            // Start Location Card - Daten direkt aus dem ViewModel
+            // Start Location Card
             LocationCard(
                 title = "Start Position",
                 latitude = uiState.startLatitude,
@@ -177,7 +180,7 @@ fun RunningScreen(
                 backgroundColor = MaterialTheme.colorScheme.primaryContainer
             )
 
-            // End Location Card - Daten direkt aus dem ViewModel
+            // End Location Card
             LocationCard(
                 title = "End Position",
                 latitude = uiState.endLatitude,
@@ -185,7 +188,7 @@ fun RunningScreen(
                 backgroundColor = MaterialTheme.colorScheme.secondaryContainer
             )
 
-            // Distanzanzeige - neue Funktion durch ViewModel möglich
+            // Distanzanzeige
             val distance = viewModel.calculateDistance()
             if (distance != null) {
                 Card(
@@ -218,52 +221,44 @@ fun RunningScreen(
             }
         }
 
-        // Control Button Section
+        // Control Button Section - vereinfacht und fokussiert auf den Hauptbutton
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.padding(bottom = 32.dp)
         ) {
-            // Permission Request Button - nur anzeigen wenn nötig
-            if (!uiState.hasLocationPermission) {
-                OutlinedButton(
-                    onClick = { handlePermissionRequest() },
-                    modifier = Modifier.padding(bottom = 16.dp)
-                ) {
-                    Text("Standortberechtigung anfordern")
-                }
-            }
-
-            // Start/Stop Button - komplett über ViewModel gesteuert
+            // Haupt Start/Stop Button - jetzt mit dynamischem Text
             Button(
                 onClick = {
+                    // Prüfe Berechtigungen und handle entsprechend
                     if (!uiState.hasLocationPermission) {
-                        handlePermissionRequest()
+                        requestPermissionsIfNeeded()
                     } else {
-                        // Einfacher Aufruf - alle Logik im ViewModel
+                        // Berechtigung bereits vorhanden - direkt toggle
                         viewModel.toggleRunning(context)
                     }
                 },
-                enabled = !uiState.isGettingLocation,
+                enabled = !uiState.isGettingLocation, // Disabled während GPS-Ermittlung
                 modifier = Modifier
-                    .size(120.dp)
+                    .size(140.dp) // Etwas größer für bessere Sichtbarkeit
                     .padding(8.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = if (uiState.isRunning)
-                        MaterialTheme.colorScheme.error
+                        MaterialTheme.colorScheme.error // Rot für Stop
                     else
-                        MaterialTheme.colorScheme.primary
+                        MaterialTheme.colorScheme.primary // Primärfarbe für Start
                 ),
-                shape = RoundedCornerShape(60.dp)
+                shape = RoundedCornerShape(70.dp) // Kreisförmig
             ) {
                 Text(
-                    text = if (uiState.isRunning) "STOP" else "START",
-                    fontSize = 18.sp,
+                    text = if (uiState.isRunning) "Lauf beenden" else "Lauf starten",
+                    fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White
+                    color = Color.White,
+                    textAlign = TextAlign.Center
                 )
             }
 
-            // Status Text - direkt aus dem ViewModel
+            // Status Text - zeigt aktuellen Zustand
             Text(
                 text = uiState.statusMessage,
                 fontSize = 16.sp,

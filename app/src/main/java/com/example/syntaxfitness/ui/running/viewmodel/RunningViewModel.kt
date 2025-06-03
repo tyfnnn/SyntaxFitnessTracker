@@ -3,6 +3,7 @@ package com.example.syntaxfitness.ui.running.viewmodel
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.syntaxfitness.service.RunNotificationService
 import com.example.syntaxfitness.utils.CoordinateUtils
 import com.example.syntaxfitness.utils.LocationUtils
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,6 +28,10 @@ class RunningViewModel : ViewModel() {
     private val _uiState = MutableStateFlow(RunningUiState())
     val uiState: StateFlow<RunningUiState> = _uiState.asStateFlow()
 
+    // Notification Service - wird für jede Benachrichtigung neu erstellt,
+    // da Context benötigt wird
+    private fun getNotificationService(context: Context) = RunNotificationService(context)
+
     fun updateLocationPermission(
         fineLocationGranted: Boolean,
         coarseLocationGranted: Boolean
@@ -45,6 +50,8 @@ class RunningViewModel : ViewModel() {
     }
 
     fun toggleRunning(context: Context) {
+        // Prüfe zunächst die Berechtigung - diese Methode sollte nur aufgerufen werden,
+        // wenn Berechtigungen bereits vorhanden sind
         if (!_uiState.value.hasLocationPermission) {
             return
         }
@@ -59,6 +66,7 @@ class RunningViewModel : ViewModel() {
     }
 
     private fun stopRun(context: Context) {
+        // UI-Status für das Beenden des Laufs setzen
         _uiState.value = _uiState.value.copy(
             isGettingLocation = true,
             statusMessage = "GPS-Position wird ermittelt..."
@@ -70,18 +78,21 @@ class RunningViewModel : ViewModel() {
     }
 
     private fun startRun(context: Context) {
+        // UI-Status für den Start des Laufs setzen
         _uiState.value = _uiState.value.copy(
             isRunning = true,
             isGettingLocation = true,
             statusMessage = "GPS-Position wird ermittelt..."
         )
 
+        getNotificationService(context).showRunInfoNotification("Lauf gestartet!")
+
         viewModelScope.launch {
             getLocationForStart(context)
         }
     }
 
-    private suspend fun getLocationForStart(context: Context) {
+    private fun getLocationForStart(context: Context) {
         LocationUtils.getLocation(context) { location ->
             val formattedLat = CoordinateUtils.formatCoordinate(location.latitude)
             val formattedLon = CoordinateUtils.formatCoordinate(location.longitude)
@@ -95,7 +106,7 @@ class RunningViewModel : ViewModel() {
         }
     }
 
-    private suspend fun getLocationForEnd(context: Context) {
+    private fun getLocationForEnd(context: Context) {
         LocationUtils.getLocation(context) { location ->
             // Konsistente Verwendung der CoordinateUtils wie in getLocationForStart
             val formattedLat = CoordinateUtils.formatCoordinate(location.latitude)
@@ -108,6 +119,8 @@ class RunningViewModel : ViewModel() {
                 isGettingLocation = false,
                 statusMessage = "Lauf beendet - Bereit für einen neuen Lauf"
             )
+
+            getNotificationService(context).showRunInfoNotification("Lauf beendet!")
         }
     }
 
@@ -120,7 +133,7 @@ class RunningViewModel : ViewModel() {
         val endLat = CoordinateUtils.parseCoordinate(currentState.endLatitude)
         val endLon = CoordinateUtils.parseCoordinate(currentState.endLongitude)
 
-        // Defensive Programmierung
+        // Defensive Programmierung - nur berechnen wenn alle Werte verfügbar sind
         return if (startLat != null && startLon != null && endLat != null && endLon != null) {
             CoordinateUtils.calculateDistance(startLat, startLon, endLat, endLon)
         } else {
