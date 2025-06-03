@@ -19,15 +19,15 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.app.ActivityCompat
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.syntaxfitness.ui.running.component.LocationCard
 import com.example.syntaxfitness.ui.running.viewmodel.RunningViewModel
 import com.example.syntaxfitness.ui.theme.SyntaxFitnessTheme
+import org.koin.androidx.compose.koinViewModel
 
 @Composable
 fun RunningScreen(
     modifier: Modifier = Modifier,
-    viewModel: RunningViewModel = viewModel()
+    viewModel: RunningViewModel = koinViewModel()
 ) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
