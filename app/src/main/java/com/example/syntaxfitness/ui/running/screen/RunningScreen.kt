@@ -1,6 +1,7 @@
 package com.example.syntaxfitness.ui.running.screen
 
 import android.Manifest
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
@@ -29,49 +30,60 @@ fun RunningScreen(
     viewModel: RunningViewModel = viewModel()
 ) {
     val context = LocalContext.current
-
-    // StateFlow beobachten - automatische Rekomposition bei Änderungen
     val uiState by viewModel.uiState.collectAsState()
 
-    // Permission Launcher - wird jetzt nur bei Button-Klick ausgelöst
+    LaunchedEffect(Unit) {
+        viewModel.checkAllPermissions(context)
+    }
+
     val requestPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
         val fineLocationGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] ?: false
         val coarseLocationGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] ?: false
-
-        // Berechtigung an ViewModel weiterleiten
         viewModel.updateLocationPermission(fineLocationGranted, coarseLocationGranted)
 
-        // Wenn Berechtigung erteilt wurde, starte automatisch den Lauf
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val notificationGranted = permissions[Manifest.permission.POST_NOTIFICATIONS] ?: false
+            viewModel.updateNotificationPermission(notificationGranted)
+        }
+
         if (fineLocationGranted || coarseLocationGranted) {
             viewModel.toggleRunning(context)
         }
     }
 
-    // Funktion für Berechtigungsanfragen
     fun requestPermissionsIfNeeded() {
-        val shouldShowRationale = ActivityCompat.shouldShowRequestPermissionRationale(
+        val shouldShowLocationRationale = ActivityCompat.shouldShowRequestPermissionRationale(
             context as androidx.activity.ComponentActivity,
             Manifest.permission.ACCESS_FINE_LOCATION
-        ) || ActivityCompat.shouldShowRequestPermissionRationale(
-            context as androidx.activity.ComponentActivity,
-            Manifest.permission.ACCESS_COARSE_LOCATION
         )
 
-        if (shouldShowRationale) {
-            viewModel.setPermissionRationaleDialogVisibility(true)
-        } else {
-            requestPermissionLauncher.launch(
-                arrayOf(
-                    Manifest.permission.ACCESS_FINE_LOCATION,
-                    Manifest.permission.ACCESS_COARSE_LOCATION
-                )
+        val shouldShowNotificationRationale = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ActivityCompat.shouldShowRequestPermissionRationale(
+                context as androidx.activity.ComponentActivity,
+                Manifest.permission.POST_NOTIFICATIONS
             )
+        } else false
+
+        when {
+            shouldShowLocationRationale -> {
+                viewModel.setPermissionRationaleDialogVisibility(true)
+            }
+            shouldShowNotificationRationale -> {
+                viewModel.setNotificationRationaleDialogVisibility(true)
+            }
+            else -> {
+                // Direkte Berechtigungsanfrage ohne Rationale
+                val permissionsToRequest = viewModel.getMissingPermissions()
+                if (permissionsToRequest.isNotEmpty()) {
+                    requestPermissionLauncher.launch(permissionsToRequest.toTypedArray())
+                }
+            }
         }
     }
 
-    // Permission Rationale Dialog
+    // Dialog für Standort-Berechtigung Rationale
     if (uiState.showPermissionRationaleDialog) {
         AlertDialog(
             onDismissRequest = {
@@ -95,12 +107,8 @@ fun RunningScreen(
                 TextButton(
                     onClick = {
                         viewModel.setPermissionRationaleDialogVisibility(false)
-                        requestPermissionLauncher.launch(
-                            arrayOf(
-                                Manifest.permission.ACCESS_FINE_LOCATION,
-                                Manifest.permission.ACCESS_COARSE_LOCATION
-                            )
-                        )
+                        val permissionsToRequest = viewModel.getMissingPermissions()
+                        requestPermissionLauncher.launch(permissionsToRequest.toTypedArray())
                     }
                 ) {
                     Text("Berechtigung erteilen")
@@ -118,7 +126,56 @@ fun RunningScreen(
         )
     }
 
-    // Haupt-UI - vereinfacht durch Entfernung des separaten Permission-Buttons
+    // Dialog für Notification-Berechtigung Rationale
+    if (uiState.showNotificationRationaleDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                viewModel.setNotificationRationaleDialogVisibility(false)
+            },
+            title = {
+                Text(
+                    text = "Benachrichtigungsberechtigung",
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text(
+                    text = "Diese App möchte Ihnen Benachrichtigungen senden, um Sie über " +
+                            "den Start und das Ende Ihrer Läufe zu informieren. " +
+                            "Diese Benachrichtigungen helfen Ihnen dabei, Ihre Trainingsfortschritte " +
+                            "im Blick zu behalten. Sie können diese Berechtigung jederzeit in den " +
+                            "App-Einstellungen ändern.",
+                    lineHeight = 20.sp
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.setNotificationRationaleDialogVisibility(false)
+                        val permissionsToRequest = viewModel.getMissingPermissions()
+                        requestPermissionLauncher.launch(permissionsToRequest.toTypedArray())
+                    }
+                ) {
+                    Text("Berechtigung erteilen")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.setNotificationRationaleDialogVisibility(false)
+                        // Auch ohne Notification-Berechtigung kann die App funktionieren
+                        if (uiState.hasLocationPermission) {
+                            viewModel.toggleRunning(context)
+                        }
+                    }
+                ) {
+                    Text("Ohne Benachrichtigungen fortfahren")
+                }
+            }
+        )
+    }
+
+    // Haupt-UI
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -140,7 +197,7 @@ fun RunningScreen(
             verticalArrangement = Arrangement.spacedBy(24.dp),
             modifier = Modifier.weight(1f)
         ) {
-            // Permission Fehlermeldung - nur noch als Info, nicht mehr als Blocker
+            // Erweiterte Berechtigungs-Informationskarte
             if (uiState.showPermissionDeniedMessage) {
                 Card(
                     modifier = Modifier
@@ -155,14 +212,28 @@ fun RunningScreen(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            text = "Standortberechtigung wird für GPS-Tracking benötigt",
+                            text = when {
+                                !uiState.hasLocationPermission && !uiState.hasNotificationPermission ->
+                                    "Standort- und Benachrichtigungsberechtigungen werden benötigt"
+                                !uiState.hasLocationPermission ->
+                                    "Standortberechtigung wird für GPS-Tracking benötigt"
+                                !uiState.hasNotificationPermission ->
+                                    "Benachrichtigungsberechtigung empfohlen für Lauf-Updates"
+                                else -> "Alle Berechtigungen erteilt"
+                            },
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center,
                             modifier = Modifier.padding(bottom = 8.dp)
                         )
 
                         Text(
-                            text = "Tippen Sie auf 'Lauf starten' um die Berechtigung anzufordern.",
+                            text = if (!uiState.hasLocationPermission) {
+                                "Tippen Sie auf 'Lauf starten' um die Berechtigung anzufordern."
+                            } else if (!uiState.hasNotificationPermission) {
+                                "Die App funktioniert auch ohne Benachrichtigungen."
+                            } else {
+                                "Sie können jetzt mit dem Laufen beginnen!"
+                            },
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center,
                             fontSize = 12.sp,
@@ -221,33 +292,31 @@ fun RunningScreen(
             }
         }
 
-        // Control Button Section - vereinfacht und fokussiert auf den Hauptbutton
+        // Control Button Section
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.padding(bottom = 32.dp)
         ) {
-            // Haupt Start/Stop Button - jetzt mit dynamischem Text
+            // Haupt Start/Stop Button
             Button(
                 onClick = {
-                    // Prüfe Berechtigungen und handle entsprechend
                     if (!uiState.hasLocationPermission) {
                         requestPermissionsIfNeeded()
                     } else {
-                        // Berechtigung bereits vorhanden - direkt toggle
                         viewModel.toggleRunning(context)
                     }
                 },
-                enabled = !uiState.isGettingLocation, // Disabled während GPS-Ermittlung
+                enabled = !uiState.isGettingLocation,
                 modifier = Modifier
-                    .size(140.dp) // Etwas größer für bessere Sichtbarkeit
+                    .size(140.dp)
                     .padding(8.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = if (uiState.isRunning)
-                        MaterialTheme.colorScheme.error // Rot für Stop
+                        MaterialTheme.colorScheme.error
                     else
-                        MaterialTheme.colorScheme.primary // Primärfarbe für Start
+                        MaterialTheme.colorScheme.primary
                 ),
-                shape = RoundedCornerShape(70.dp) // Kreisförmig
+                shape = RoundedCornerShape(70.dp)
             ) {
                 Text(
                     text = if (uiState.isRunning) "Lauf beenden" else "Lauf starten",
@@ -258,7 +327,7 @@ fun RunningScreen(
                 )
             }
 
-            // Status Text - zeigt aktuellen Zustand
+            // Status Text
             Text(
                 text = uiState.statusMessage,
                 fontSize = 16.sp,
