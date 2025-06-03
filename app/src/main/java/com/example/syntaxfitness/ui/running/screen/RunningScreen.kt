@@ -547,7 +547,7 @@ private fun AnimatedGradientLine() {
 
     Box(
         modifier = Modifier
-            .width(80.dp)
+            .width(212.dp)
             .height(4.dp)
             .clip(RoundedCornerShape(2.dp))
             .background(
