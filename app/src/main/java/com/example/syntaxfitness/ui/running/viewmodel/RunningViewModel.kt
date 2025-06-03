@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
+import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -14,7 +15,7 @@ import com.example.syntaxfitness.utils.CoordinateUtils
 import com.example.syntaxfitness.utils.LocationUtils
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import java.time.LocalDateTime
+import java.util.Date
 
 class RunningViewModel(
     private val runRepository: RunRepository
@@ -36,21 +37,66 @@ class RunningViewModel(
         val runHistory: List<RunEntity> = emptyList(),
         val totalDistance: Float = 0f,
         val totalRuns: Int = 0,
-        val averageDistance: Float = 0f
+        val averageDistance: Float = 0f,
+        val currentRunDuration: Long = 0L,
+        val currentRunId: Long? = null
     )
 
     private val _uiState = MutableStateFlow(RunningUiState())
     val uiState: StateFlow<RunningUiState> = _uiState.asStateFlow()
 
-    // Temporäre Variablen für laufende Läufe
-    private var currentRunStartTime: LocalDateTime? = null
+    // Erweiterte Variablen für bessere Persistierung
+    private var currentRunStartTime: Date? = null
     private var startLat: Double? = null
     private var startLon: Double? = null
+    private var currentRunEntity: RunEntity? = null
 
     init {
-        // Lade Laufhistorie und Statistiken
+        // Lade alle persistenten Daten beim Start
         loadRunHistory()
         loadStatistics()
+        checkForIncompleteRun()
+    }
+
+    /**
+     * Überprüft beim App-Start, ob ein unvollständiger Lauf existiert
+     * und stellt diesen wieder her
+     */
+    private fun checkForIncompleteRun() {
+        viewModelScope.launch {
+            try {
+                val lastRun = runRepository.getLastRun()
+                if (lastRun != null && lastRun.endLatitude == 0.0 && lastRun.endLongitude == 0.0) {
+                    // Unvollständiger Lauf gefunden - wiederherstellen
+                    Log.i("RunningViewModel", "Unvollständiger Lauf gefunden, stelle wieder her")
+                    restoreIncompleteRun(lastRun)
+                }
+            } catch (e: Exception) {
+                Log.e("RunningViewModel", "Fehler beim Überprüfen unvollständiger Läufe", e)
+            }
+        }
+    }
+
+    /**
+     * Stellt einen unvollständigen Lauf wieder her
+     */
+    private fun restoreIncompleteRun(run: RunEntity) {
+        currentRunEntity = run
+        currentRunStartTime = run.startTime
+        startLat = run.startLatitude
+        startLon = run.startLongitude
+
+        _uiState.update {
+            it.copy(
+                isRunning = true,
+                startLatitude = CoordinateUtils.formatCoordinate(run.startLatitude),
+                startLongitude = CoordinateUtils.formatCoordinate(run.startLongitude),
+                endLatitude = "--",
+                endLongitude = "--",
+                statusMessage = "Lauf läuft... (wiederhergestellt)",
+                currentRunId = run.id
+            )
+        }
     }
 
     private fun loadRunHistory() {
@@ -114,6 +160,7 @@ class RunningViewModel(
 
     private fun updatePermissionStates(hasLocation: Boolean, hasNotification: Boolean) {
         val statusMessage = when {
+            _uiState.value.isRunning -> _uiState.value.statusMessage
             !hasLocation && !hasNotification -> "Standort- und Benachrichtigungsberechtigungen erforderlich"
             !hasLocation -> "Standortberechtigung erforderlich"
             !hasNotification -> "Benachrichtigungsberechtigung empfohlen"
@@ -162,16 +209,16 @@ class RunningViewModel(
     }
 
     private fun startRun(context: Context) {
-        currentRunStartTime = LocalDateTime.now()
+        currentRunStartTime = Date()
 
         _uiState.update {
             it.copy(
                 isRunning = true,
                 isGettingLocation = true,
                 statusMessage = "GPS-Position wird ermittelt...",
-                // Reset display values
                 endLatitude = "--",
-                endLongitude = "--"
+                endLongitude = "--",
+                currentRunDuration = 0L
             )
         }
 
@@ -213,6 +260,41 @@ class RunningViewModel(
                     statusMessage = "Lauf läuft..."
                 )
             }
+
+            // Speichere den Start des Laufs sofort in der Datenbank
+            viewModelScope.launch {
+                saveRunStart(location.latitude, location.longitude)
+            }
+        }
+    }
+
+    /**
+     * Speichert den Start eines Laufs sofort in der Datenbank
+     * Dies stellt sicher, dass bei App-Abstürzen oder Unterbrechungen
+     * der Lauf nicht verloren geht
+     */
+    private suspend fun saveRunStart(latitude: Double, longitude: Double) {
+        try {
+            val currentTime = Date()
+            val incompleteRun = RunEntity(
+                startLatitude = latitude,
+                startLongitude = longitude,
+                endLatitude = 0.0, // Markiert als unvollständig
+                endLongitude = 0.0, // Markiert als unvollständig
+                distance = 0f,
+                startTime = currentTime,
+                endTime = currentTime, // Temporär
+                duration = 0L
+            )
+
+            val runId = runRepository.insertRun(incompleteRun)
+            currentRunEntity = incompleteRun.copy(id = runId)
+
+            _uiState.update { it.copy(currentRunId = runId) }
+
+            Log.i("RunningViewModel", "Lauf-Start gespeichert mit ID: $runId")
+        } catch (e: Exception) {
+            Log.e("RunningViewModel", "Fehler beim Speichern des Lauf-Starts", e)
         }
     }
 
@@ -233,25 +315,11 @@ class RunningViewModel(
                 )
             }
 
-            // Speichere den Lauf in der Datenbank
+            // Vervollständige den Lauf in der Datenbank
             startLat?.let { sLat ->
                 startLon?.let { sLon ->
-                    val distance = CoordinateUtils.calculateDistance(sLat, sLon, endLat, endLon)
-                    val endTime = LocalDateTime.now()
-                    val duration = java.time.Duration.between(currentRunStartTime, endTime).toMillis()
-
                     viewModelScope.launch {
-                        val newRun = RunEntity(
-                            startLatitude = sLat,
-                            startLongitude = sLon,
-                            endLatitude = endLat,
-                            endLongitude = endLon,
-                            distance = distance,
-                            startTime = currentRunStartTime ?: LocalDateTime.now(),
-                            endTime = endTime,
-                            duration = duration
-                        )
-                        runRepository.insertRun(newRun)
+                        completeRun(sLat, sLon, endLat, endLon)
                     }
                 }
             }
@@ -259,6 +327,53 @@ class RunningViewModel(
             if (_uiState.value.hasNotificationPermission) {
                 RunNotificationService(context).showRunInfoNotification("Lauf beendet!")
             }
+        }
+    }
+
+    /**
+     * Vervollständigt einen Lauf in der Datenbank
+     */
+    private suspend fun completeRun(startLat: Double, startLon: Double, endLat: Double, endLon: Double) {
+        try {
+            val distance = CoordinateUtils.calculateDistance(startLat, startLon, endLat, endLon)
+            val endTime = Date()
+            val duration = currentRunStartTime?.let { startTime ->
+                endTime.time - startTime.time
+            } ?: 0L
+
+            currentRunEntity?.let { existingRun ->
+                // Update den bestehenden Lauf
+                val completedRun = existingRun.copy(
+                    endLatitude = endLat,
+                    endLongitude = endLon,
+                    distance = distance,
+                    endTime = endTime,
+                    duration = duration
+                )
+
+                runRepository.updateRun(completedRun)
+                Log.i("RunningViewModel", "Lauf vervollständigt: ${distance}m in ${duration}ms")
+
+                // Reset current run data
+                currentRunEntity = null
+                _uiState.update { it.copy(currentRunId = null) }
+            } ?: run {
+                // Fallback: Erstelle neuen Lauf falls kein bestehender gefunden wurde
+                val newRun = RunEntity(
+                    startLatitude = startLat,
+                    startLongitude = startLon,
+                    endLatitude = endLat,
+                    endLongitude = endLon,
+                    distance = distance,
+                    startTime = currentRunStartTime ?: Date(),
+                    endTime = endTime,
+                    duration = duration
+                )
+                runRepository.insertRun(newRun)
+                Log.i("RunningViewModel", "Neuer Lauf erstellt: ${distance}m")
+            }
+        } catch (e: Exception) {
+            Log.e("RunningViewModel", "Fehler beim Vervollständigen des Laufs", e)
         }
     }
 
@@ -278,12 +393,6 @@ class RunningViewModel(
         }
     }
 
-    fun deleteRun(run: RunEntity) {
-        viewModelScope.launch {
-            runRepository.deleteRun(run)
-        }
-    }
-
     fun getMissingPermissions(): List<String> {
         val missing = mutableListOf<String>()
 
@@ -297,5 +406,10 @@ class RunningViewModel(
         }
 
         return missing
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        Log.i("RunningViewModel", "ViewModel wird zerstört")
     }
 }

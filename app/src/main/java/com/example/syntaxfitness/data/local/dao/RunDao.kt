@@ -27,15 +27,34 @@ interface RunDao {
     @Query("SELECT * FROM runs ORDER BY startTime DESC LIMIT 1")
     suspend fun getLastRun(): RunEntity?
 
-    @Query("SELECT SUM(distance) FROM runs")
+    @Query("SELECT SUM(distance) FROM runs WHERE endLatitude != 0.0 AND endLongitude != 0.0")
     fun getTotalDistance(): Flow<Float?>
 
-    @Query("SELECT COUNT(*) FROM runs")
+    @Query("SELECT COUNT(*) FROM runs WHERE endLatitude != 0.0 AND endLongitude != 0.0")
     fun getTotalRunCount(): Flow<Int>
 
-    @Query("SELECT AVG(distance) FROM runs")
+    @Query("SELECT AVG(distance) FROM runs WHERE endLatitude != 0.0 AND endLongitude != 0.0")
     fun getAverageDistance(): Flow<Float?>
 
-    @Query("SELECT * FROM runs WHERE date(startTime) = date(:date)")
+    @Query("SELECT * FROM runs WHERE date(startTime) = date(:date) AND endLatitude != 0.0 AND endLongitude != 0.0")
     fun getRunsByDate(date: String): Flow<List<RunEntity>>
+
+    // Neue Queries für bessere Datenverwaltung
+    @Query("SELECT * FROM runs WHERE endLatitude = 0.0 AND endLongitude = 0.0")
+    suspend fun getIncompleteRuns(): List<RunEntity>
+
+    @Query("DELETE FROM runs WHERE endLatitude = 0.0 AND endLongitude = 0.0")
+    suspend fun deleteIncompleteRuns()
+
+    @Query("SELECT * FROM runs WHERE endLatitude != 0.0 AND endLongitude != 0.0 ORDER BY distance DESC LIMIT :limit")
+    fun getLongestRuns(limit: Int = 10): Flow<List<RunEntity>>
+
+    @Query("SELECT * FROM runs WHERE endLatitude != 0.0 AND endLongitude != 0.0 ORDER BY duration DESC LIMIT :limit")
+    fun getLongestDurationRuns(limit: Int = 10): Flow<List<RunEntity>>
+
+    @Query("SELECT COUNT(*) FROM runs WHERE date(startTime) = date('now') AND endLatitude != 0.0 AND endLongitude != 0.0")
+    fun getTodayRunCount(): Flow<Int>
+
+    @Query("SELECT SUM(distance) FROM runs WHERE date(startTime) = date('now') AND endLatitude != 0.0 AND endLongitude != 0.0")
+    fun getTodayTotalDistance(): Flow<Float?>
 }
