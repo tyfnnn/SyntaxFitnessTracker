@@ -1,6 +1,8 @@
-package com.example.syntaxfitness.ui
+package com.example.syntaxfitness.ui.running.screen
 
 import android.Manifest
+import android.os.Build
+import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
@@ -11,12 +13,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.app.ActivityCompat
+import com.example.syntaxfitness.ui.running.component.LocationCard
 import com.example.syntaxfitness.ui.theme.SyntaxFitnessTheme
 import com.example.syntaxfitness.utils.LocationUtils
 
@@ -31,6 +35,7 @@ fun RunningScreen(modifier: Modifier = Modifier) {
     var endLongitude by remember { mutableStateOf("--") }
 
     var hasLocationPermission by remember { mutableStateOf(false) }
+    var hasNotificationPermission by remember { mutableStateOf(true) } // Default true for older versions
     var showPermissionDeniedMessage by remember { mutableStateOf(false) }
     var isGettingLocation by remember { mutableStateOf(false) }
 
@@ -42,8 +47,10 @@ fun RunningScreen(modifier: Modifier = Modifier) {
     ) { permissions ->
         val fineLocationGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] ?: false
         val coarseLocationGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] ?: false
+        val notificationGranted = permissions[Manifest.permission.POST_NOTIFICATIONS] ?: true // Default true for older versions
 
         hasLocationPermission = fineLocationGranted || coarseLocationGranted
+        hasNotificationPermission = notificationGranted
 
         if (!hasLocationPermission) {
             showPermissionDeniedMessage = true
@@ -51,10 +58,10 @@ fun RunningScreen(modifier: Modifier = Modifier) {
             // Check if we should show rationale for the next time
             // This helps us prepare for future permission requests
             val shouldShowRationale = ActivityCompat.shouldShowRequestPermissionRationale(
-                context as androidx.activity.ComponentActivity,
+                context as ComponentActivity,
                 Manifest.permission.ACCESS_FINE_LOCATION
             ) || ActivityCompat.shouldShowRequestPermissionRationale(
-                context as androidx.activity.ComponentActivity,
+                context as ComponentActivity,
                 Manifest.permission.ACCESS_COARSE_LOCATION
             )
 
@@ -67,26 +74,36 @@ fun RunningScreen(modifier: Modifier = Modifier) {
 
     // Function to handle permission requests with rationale check
     fun handlePermissionRequest() {
-        // Check if we should show rationale before requesting permission
-        val shouldShowRationale = ActivityCompat.shouldShowRequestPermissionRationale(
-            context as androidx.activity.ComponentActivity,
-            Manifest.permission.ACCESS_FINE_LOCATION
-        ) || ActivityCompat.shouldShowRequestPermissionRationale(
-            context as androidx.activity.ComponentActivity,
+        // Build the list of permissions to request
+        val permissionsToRequest = mutableListOf(
+            Manifest.permission.ACCESS_FINE_LOCATION,
             Manifest.permission.ACCESS_COARSE_LOCATION
         )
+
+        // Only add notification permission for Android 13 (API 33) and above
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissionsToRequest.add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+
+        // Check if we should show rationale before requesting permission
+        val shouldShowRationale = ActivityCompat.shouldShowRequestPermissionRationale(
+            context as ComponentActivity,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        ) || ActivityCompat.shouldShowRequestPermissionRationale(
+            context as ComponentActivity,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        ) || (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                ActivityCompat.shouldShowRequestPermissionRationale(
+                    context as ComponentActivity,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ))
 
         if (shouldShowRationale) {
             // Show rationale dialog first
             showPermissionRationaleDialog = true
         } else {
             // Request permission directly
-            requestPermissionLauncher.launch(
-                arrayOf(
-                    Manifest.permission.ACCESS_FINE_LOCATION,
-                    Manifest.permission.ACCESS_COARSE_LOCATION
-                )
-            )
+            requestPermissionLauncher.launch(permissionsToRequest.toTypedArray())
         }
     }
 
@@ -98,15 +115,20 @@ fun RunningScreen(modifier: Modifier = Modifier) {
             },
             title = {
                 Text(
-                    text = "Standortberechtigung erforderlich",
+                    text = "Berechtigungen erforderlich",
                     fontWeight = FontWeight.Bold
                 )
             },
             text = {
                 Text(
-                    text = "Diese App benötigt Zugriff auf Ihren Standort, um Ihre Laufstrecke zu verfolgen. " +
-                            "Wir verwenden GPS-Daten nur während aktiver Läufe, um Start- und Endpositionen " +
-                            "zu erfassen. Ihre Standortdaten werden nicht gespeichert oder weitergegeben.",
+                    text = buildString {
+                        append("Diese App benötigt folgende Berechtigungen:\n\n")
+                        append("• Standort: Um Ihre Laufstrecke zu verfolgen\n")
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            append("• Benachrichtigungen: Um Sie über Laufstatus zu informieren\n")
+                        }
+                        append("\nIhre Daten werden nur lokal verwendet und nicht weitergegeben.")
+                    },
                     lineHeight = 20.sp
                 )
             },
@@ -115,15 +137,19 @@ fun RunningScreen(modifier: Modifier = Modifier) {
                     onClick = {
                         showPermissionRationaleDialog = false
                         // Now request the permission after showing rationale
-                        requestPermissionLauncher.launch(
-                            arrayOf(
-                                Manifest.permission.ACCESS_FINE_LOCATION,
-                                Manifest.permission.ACCESS_COARSE_LOCATION
-                            )
+                        val permissionsToRequest = mutableListOf(
+                            Manifest.permission.ACCESS_FINE_LOCATION,
+                            Manifest.permission.ACCESS_COARSE_LOCATION
                         )
+
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            permissionsToRequest.add(Manifest.permission.POST_NOTIFICATIONS)
+                        }
+
+                        requestPermissionLauncher.launch(permissionsToRequest.toTypedArray())
                     }
                 ) {
-                    Text("Berechtigung erteilen")
+                    Text("Berechtigungen erteilen")
                 }
             },
             dismissButton = {
@@ -174,7 +200,13 @@ fun RunningScreen(modifier: Modifier = Modifier) {
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            text = "Standortberechtigung erforderlich für GPS-Tracking",
+                            text = buildString {
+                                append("Berechtigungen erforderlich:\n")
+                                if (!hasLocationPermission) append("• Standort für GPS-Tracking\n")
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !hasNotificationPermission) {
+                                    append("• Benachrichtigungen für Updates")
+                                }
+                            },
                             color = MaterialTheme.colorScheme.onErrorContainer,
                             textAlign = TextAlign.Center,
                             modifier = Modifier.padding(bottom = 8.dp)
@@ -186,7 +218,7 @@ fun RunningScreen(modifier: Modifier = Modifier) {
                             color = MaterialTheme.colorScheme.onErrorContainer,
                             textAlign = TextAlign.Center,
                             fontSize = 12.sp,
-                            fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                            fontStyle = FontStyle.Italic
                         )
                     }
                 }
@@ -215,7 +247,10 @@ fun RunningScreen(modifier: Modifier = Modifier) {
             modifier = Modifier.padding(bottom = 32.dp)
         ) {
             // Permission Request Button (only shown when no permission is granted)
-            if (!hasLocationPermission) {
+            val needsPermissions = !hasLocationPermission ||
+                    (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !hasNotificationPermission)
+
+            if (needsPermissions) {
                 OutlinedButton(
                     onClick = {
                         // Use our new permission handling function
@@ -223,7 +258,7 @@ fun RunningScreen(modifier: Modifier = Modifier) {
                     },
                     modifier = Modifier.padding(bottom = 16.dp)
                 ) {
-                    Text("Standortberechtigung anfordern")
+                    Text("Berechtigungen anfordern")
                 }
             }
 
@@ -293,6 +328,8 @@ fun RunningScreen(modifier: Modifier = Modifier) {
             Text(
                 text = when {
                     !hasLocationPermission -> "Standortberechtigung erforderlich"
+                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !hasNotificationPermission ->
+                        "Benachrichtigungsberechtigung empfohlen"
                     isGettingLocation -> "GPS-Position wird ermittelt..."
                     isRunning -> "Lauf läuft..."
                     else -> "Bereit zum Starten"
@@ -302,73 +339,6 @@ fun RunningScreen(modifier: Modifier = Modifier) {
                 modifier = Modifier.padding(top = 8.dp),
                 textAlign = TextAlign.Center
             )
-        }
-    }
-}
-
-@Composable
-fun LocationCard(
-    title: String,
-    latitude: String,
-    longitude: String,
-    backgroundColor: Color,
-    modifier: Modifier = Modifier
-) {
-    Card(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp),
-        colors = CardDefaults.cardColors(containerColor = backgroundColor),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(
-                text = title,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(bottom = 12.dp)
-            )
-
-            Row(
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = "Breitengrad",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = latitude,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        textAlign = TextAlign.Center
-                    )
-                }
-
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = "Längengrad",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = longitude,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        textAlign = TextAlign.Center
-                    )
-                }
-            }
         }
     }
 }
