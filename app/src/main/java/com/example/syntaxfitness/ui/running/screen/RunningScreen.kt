@@ -42,7 +42,8 @@ import java.util.Locale
 @Composable
 fun RunningScreen(
     modifier: Modifier = Modifier,
-    viewModel: RunningViewModel = koinViewModel()
+    viewModel: RunningViewModel = koinViewModel(),
+    onNavigateToSettings: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
@@ -164,8 +165,7 @@ fun RunningScreen(
                         // Settings Button
                         IconButton(
                             onClick = {
-                                // TODO: Navigation zu Einstellungen
-                                // Für jetzt nur ein Log oder Placeholder
+                                onNavigateToSettings()
                             },
                             modifier = Modifier
                                 .size(48.dp)
@@ -178,7 +178,7 @@ fun RunningScreen(
                                 imageVector = Icons.Default.Settings,
                                 contentDescription = "Einstellungen",
                                 tint = Color.White,
-                                modifier = Modifier.size(24.dp)
+                                modifier = Modifier.size(24.dp),
                             )
                         }
                     }

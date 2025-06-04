@@ -6,6 +6,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
+import com.example.syntaxfitness.navigation.SyntaxFitnessNavigation
 import com.example.syntaxfitness.ui.running.screen.RunningScreen
 import com.example.syntaxfitness.ui.theme.SyntaxFitnessTheme
 
@@ -15,7 +16,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             SyntaxFitnessTheme {
-                RunningScreen(
+                SyntaxFitnessNavigation(
                     modifier = Modifier.fillMaxSize()
                 )
             }
