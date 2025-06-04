@@ -242,13 +242,14 @@ fun RunningScreen(
                             )
                         )
                     ) {
-                        GlassmorphismRunHistoryItem(run = run)
+                        GlassmorphismRunHistoryItem(
+                            run = run,
+                            onDelete = { deletedRun ->
+                                viewModel.deleteRun(deletedRun)
+                            }
+                        )
                     }
                 }
-            }
-
-            item {
-                Spacer(modifier = Modifier.height(32.dp))
             }
         }
     }

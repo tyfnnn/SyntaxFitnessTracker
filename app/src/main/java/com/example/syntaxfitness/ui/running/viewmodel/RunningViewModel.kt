@@ -408,6 +408,28 @@ class RunningViewModel(
         return missing
     }
 
+    fun deleteRun(run: RunEntity) {
+        viewModelScope.launch {
+            try {
+                runRepository.deleteRun(run)
+                Log.i("RunningViewModel", "Lauf gelöscht: ${run.id}")
+            } catch (e: Exception) {
+                Log.e("RunningViewModel", "Fehler beim Löschen des Laufs", e)
+            }
+        }
+    }
+
+    fun deleteAllRuns() {
+        viewModelScope.launch {
+            try {
+                runRepository.deleteAllRuns()
+                Log.i("RunningViewModel", "Alle Läufe gelöscht")
+            } catch (e: Exception) {
+                Log.e("RunningViewModel", "Fehler beim Löschen aller Läufe", e)
+            }
+        }
+    }
+
     override fun onCleared() {
         super.onCleared()
         Log.i("RunningViewModel", "ViewModel wird zerstört")
