@@ -54,12 +54,12 @@ fun RunningScreen(
     val requestPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
-        val fineLocationGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] ?: false
-        val coarseLocationGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] ?: false
+        val fineLocationGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true
+        val coarseLocationGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
         viewModel.updateLocationPermission(fineLocationGranted, coarseLocationGranted)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            val notificationGranted = permissions[Manifest.permission.POST_NOTIFICATIONS] ?: false
+            val notificationGranted = permissions[Manifest.permission.POST_NOTIFICATIONS] == true
             viewModel.updateNotificationPermission(notificationGranted)
         }
 
@@ -76,7 +76,7 @@ fun RunningScreen(
 
         val shouldShowNotificationRationale = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             ActivityCompat.shouldShowRequestPermissionRationale(
-                context as ComponentActivity,
+                context,
                 Manifest.permission.POST_NOTIFICATIONS
             )
         } else false
@@ -172,7 +172,7 @@ fun RunningScreen(
                         )
                         StatCard(
                             title = "Gesamt",
-                            value = "${String.format("%.1f", uiState.totalDistance)}km",
+                            value = "${String.format(Locale.US, "%.1f", uiState.totalDistance)}km",
                             icon = Icons.AutoMirrored.Filled.TrendingUp,
                             modifier = Modifier.weight(1f)
                         )
@@ -277,7 +277,7 @@ private fun DistanceCard(distance: Float) {
                 color = Color.White.copy(alpha = 0.8f)
             )
             Text(
-                text = "${String.format("%.1f", distance)} m",
+                text = "${String.format(Locale.US, "%.1f", distance)} m",
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color.White
@@ -324,7 +324,7 @@ private fun GlassmorphismRunHistoryItem(
 
             Column(horizontalAlignment = Alignment.End) {
                 Text(
-                    text = String.format("%.1f m", run.distance),
+                    text = String.format(Locale.US, "%.1f m", run.distance),
                     fontWeight = FontWeight.Medium,
                     fontSize = 16.sp,
                     color = Color(0xFF8B5CF6)
@@ -345,9 +345,9 @@ private fun formatDuration(durationMillis: Long): String {
     val hours = (durationMillis / (1000 * 60 * 60))
 
     return if (hours > 0) {
-        String.format("%d:%02d:%02d", hours, minutes, seconds)
+        String.format(Locale.US, "%d:%02d:%02d", hours, minutes, seconds)
     } else {
-        String.format("%d:%02d", minutes, seconds)
+        String.format(Locale.US, "%d:%02d", minutes, seconds)
     }
 }
 
