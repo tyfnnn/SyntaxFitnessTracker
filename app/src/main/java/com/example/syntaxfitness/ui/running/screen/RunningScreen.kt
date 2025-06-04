@@ -9,11 +9,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.DirectionsRun
 import androidx.compose.material.icons.automirrored.filled.TrendingUp
@@ -27,16 +25,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.app.ActivityCompat
-import com.example.syntaxfitness.data.local.entity.RunEntity
 import com.example.syntaxfitness.ui.running.component.AnimatedGradientBackground
 import com.example.syntaxfitness.ui.running.component.AnimatedGradientLine
+import com.example.syntaxfitness.ui.running.component.DistanceCard
 import com.example.syntaxfitness.ui.running.component.GlassmorphismDialog
+import com.example.syntaxfitness.ui.running.component.GlassmorphismRunHistoryItem
 import com.example.syntaxfitness.ui.running.component.LocationCardsSection
 import com.example.syntaxfitness.ui.running.component.MainRunningCard
 import com.example.syntaxfitness.ui.running.component.StatCard
 import com.example.syntaxfitness.ui.running.viewmodel.RunningViewModel
 import org.koin.androidx.compose.koinViewModel
-import java.text.SimpleDateFormat
 import java.util.Locale
 
 @Composable
@@ -256,98 +254,4 @@ fun RunningScreen(
     }
 }
 
-@Composable
-private fun DistanceCard(distance: Float) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = Color(0xFF8B5CF6).copy(alpha = 0.2f)
-        ),
-        shape = RoundedCornerShape(16.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .padding(16.dp)
-                .fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(
-                text = "Distanz",
-                fontSize = 14.sp,
-                color = Color.White.copy(alpha = 0.8f)
-            )
-            Text(
-                text = "${String.format(Locale.US, "%.1f", distance)} m",
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.White
-            )
-        }
-    }
-}
-
-@Composable
-private fun GlassmorphismRunHistoryItem(
-    run: RunEntity
-) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { },
-        colors = CardDefaults.cardColors(
-            containerColor = Color.White.copy(alpha = 0.08f)
-        ),
-        shape = RoundedCornerShape(16.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).format(run.startTime),
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 16.sp,
-                    color = Color.White
-                )
-                Text(
-                    text = SimpleDateFormat("HH:mm", Locale.getDefault()).format(run.startTime) +
-                            " - " +
-                            SimpleDateFormat("HH:mm", Locale.getDefault()).format(run.endTime),
-                    fontSize = 14.sp,
-                    color = Color.White.copy(alpha = 0.7f)
-                )
-            }
-
-            Column(horizontalAlignment = Alignment.End) {
-                Text(
-                    text = String.format(Locale.US, "%.1f m", run.distance),
-                    fontWeight = FontWeight.Medium,
-                    fontSize = 16.sp,
-                    color = Color(0xFF8B5CF6)
-                )
-                Text(
-                    text = formatDuration(run.duration),
-                    fontSize = 14.sp,
-                    color = Color.White.copy(alpha = 0.7f)
-                )
-            }
-        }
-    }
-}
-
-private fun formatDuration(durationMillis: Long): String {
-    val seconds = (durationMillis / 1000) % 60
-    val minutes = (durationMillis / (1000 * 60)) % 60
-    val hours = (durationMillis / (1000 * 60 * 60))
-
-    return if (hours > 0) {
-        String.format(Locale.US, "%d:%02d:%02d", hours, minutes, seconds)
-    } else {
-        String.format(Locale.US, "%d:%02d", minutes, seconds)
-    }
-}
 
