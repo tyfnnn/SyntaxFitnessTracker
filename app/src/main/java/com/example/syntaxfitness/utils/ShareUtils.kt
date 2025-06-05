@@ -29,7 +29,6 @@ import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.*
-import androidx.core.graphics.createBitmap
 
 object ShareUtils {
 
@@ -84,7 +83,11 @@ object ShareUtils {
         composeView.measure(widthSpec, heightSpec)
         composeView.layout(0, 0, composeView.measuredWidth, composeView.measuredHeight)
 
-        val bitmap = createBitmap(composeView.measuredWidth, composeView.measuredHeight)
+        val bitmap = Bitmap.createBitmap(
+            composeView.measuredWidth,
+            composeView.measuredHeight,
+            Bitmap.Config.ARGB_8888
+        )
 
         val canvas = Canvas(bitmap)
         composeView.draw(canvas)
@@ -116,7 +119,12 @@ object ShareUtils {
         composeView.measure(widthSpec, heightSpec)
         composeView.layout(0, 0, composeView.measuredWidth, composeView.measuredHeight)
 
-        val bitmap = createBitmap(composeView.measuredWidth, composeView.measuredHeight)
+        // FIX: Explizit Bitmap mit Config erstellen
+        val bitmap = Bitmap.createBitmap(
+            composeView.measuredWidth,
+            composeView.measuredHeight,
+            Bitmap.Config.ARGB_8888
+        )
 
         val canvas = Canvas(bitmap)
         composeView.draw(canvas)
