@@ -45,6 +45,9 @@ class RunningViewModel(
     private val _uiState = MutableStateFlow(RunningUiState())
     val uiState: StateFlow<RunningUiState> = _uiState.asStateFlow()
 
+    private val _selectedRun = MutableStateFlow<RunEntity?>(null)
+    val selectedRun: StateFlow<RunEntity?> = _selectedRun.asStateFlow()
+
     // Erweiterte Variablen für bessere Persistierung
     private var currentRunStartTime: Date? = null
     private var startLat: Double? = null
@@ -433,5 +436,17 @@ class RunningViewModel(
     override fun onCleared() {
         super.onCleared()
         Log.i("RunningViewModel", "ViewModel wird zerstört")
+    }
+
+    fun loadRunDetails(runId: Long) {
+        viewModelScope.launch {
+            try {
+                val run = runRepository.getRunById(runId)
+                _selectedRun.value = run
+            } catch (e: Exception) {
+                Log.e("RunningViewModel", "Fehler beim Laden des Laufs mit ID $runId", e)
+                _selectedRun.value = null
+            }
+        }
     }
 }

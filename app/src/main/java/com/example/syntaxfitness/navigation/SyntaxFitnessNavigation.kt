@@ -28,7 +28,10 @@ fun SyntaxFitnessNavigation(
         composable(Screen.Running.route) {
             RunningScreen(
                 modifier = Modifier,
-                onNavigateToSettings = { navController.navigate(Screen.Settings.route) }
+                onNavigateToSettings = { navController.navigate(Screen.Settings.route) },
+                onNavigateToRunDetail = { runId ->
+                    navController.navigate(Screen.RunDetail.createRoute(runId))
+                }
             )
         }
         composable(Screen.Settings.route) {

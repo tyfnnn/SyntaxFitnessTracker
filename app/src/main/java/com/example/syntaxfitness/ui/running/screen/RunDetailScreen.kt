@@ -60,12 +60,10 @@ fun RunDetailScreen(
     modifier: Modifier = Modifier,
     viewModel: RunningViewModel = koinViewModel()
 ) {
-    var runDetails by remember { mutableStateOf<RunEntity?>(null) }
-    val uiState by viewModel.uiState.collectAsState()
+    val runDetails by viewModel.selectedRun.collectAsState()
 
-    // Load run details
     LaunchedEffect(runId) {
-        runDetails = uiState.runHistory.find { it.id == runId }
+        viewModel.loadRunDetails(runId)
     }
 
     Box(modifier = modifier.fillMaxSize()) {
