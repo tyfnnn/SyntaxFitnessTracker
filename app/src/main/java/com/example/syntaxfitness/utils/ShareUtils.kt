@@ -6,29 +6,21 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.net.Uri
 import android.util.Log
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
+import android.view.View
+import android.view.ViewGroup
 import androidx.compose.ui.platform.ComposeView
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import com.example.syntaxfitness.data.local.entity.RunEntity
 import com.example.syntaxfitness.ui.running.component.ShareableRunDetailCard
 import com.example.syntaxfitness.ui.theme.SyntaxFitnessTheme
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.*
+import androidx.core.graphics.createBitmap
 
 object ShareUtils {
 
@@ -50,8 +42,10 @@ object ShareUtils {
                 val imageUri = createShareableImage(context, run)
                 shareIntent.putExtra(Intent.EXTRA_STREAM, imageUri)
                 shareIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                Log.d("ShareUtils", "Successfully created shareable image: $imageUri")
             } catch (e: Exception) {
-                Log.e("ShareUtils", "Fehler beim Erstellen des Share-Bildes", e)
+                Log.e("ShareUtils", "Error creating shareable image", e)
+                // Fallback to text only
                 shareIntent.type = "text/plain"
             }
         }
@@ -59,47 +53,22 @@ object ShareUtils {
         Intent.createChooser(shareIntent, "Lauf teilen")
     }
 
-    suspend fun createInstagramStoryImage(
-        context: Context,
-        run: RunEntity,
-    ): Uri = withContext(Dispatchers.Main) {
-        val composeView = ComposeView(context).apply {
-            setContent {
-                SyntaxFitnessTheme {
-                    InstagramStoryRunCard(run = run)
-                }
-            }
-        }
-
-        val widthSpec = android.view.View.MeasureSpec.makeMeasureSpec(
-            (1080 * context.resources.displayMetrics.density / 4).toInt(),
-            android.view.View.MeasureSpec.EXACTLY
-        )
-        val heightSpec = android.view.View.MeasureSpec.makeMeasureSpec(
-            (1920 * context.resources.displayMetrics.density / 4).toInt(),
-            android.view.View.MeasureSpec.EXACTLY
-        )
-
-        composeView.measure(widthSpec, heightSpec)
-        composeView.layout(0, 0, composeView.measuredWidth, composeView.measuredHeight)
-
-        val bitmap = Bitmap.createBitmap(
-            composeView.measuredWidth,
-            composeView.measuredHeight,
-            Bitmap.Config.ARGB_8888
-        )
-
-        val canvas = Canvas(bitmap)
-        composeView.draw(canvas)
-
-        saveBitmapToTempFile(context, bitmap, run, "story_")
-    }
-
     private suspend fun createShareableImage(
         context: Context,
         run: RunEntity,
     ): Uri = withContext(Dispatchers.Main) {
+        // Get the current activity to attach ComposeView properly
+        val activity = context as? android.app.Activity
+            ?: throw IllegalStateException("Context must be an Activity")
+
+        // Calculate dimensions in pixels
+        val density = context.resources.displayMetrics.density
+        val widthPx = (400 * density).toInt()
+        val heightPx = (600 * density).toInt()
+
+        // Create ComposeView and add to activity's content view temporarily
         val composeView = ComposeView(context).apply {
+            layoutParams = ViewGroup.LayoutParams(widthPx, heightPx)
             setContent {
                 SyntaxFitnessTheme {
                     ShareableRunDetailCard(run = run)
@@ -107,28 +76,34 @@ object ShareUtils {
             }
         }
 
-        val widthSpec = android.view.View.MeasureSpec.makeMeasureSpec(
-            (400 * context.resources.displayMetrics.density).toInt(),
-            android.view.View.MeasureSpec.EXACTLY
-        )
-        val heightSpec = android.view.View.MeasureSpec.makeMeasureSpec(
-            (600 * context.resources.displayMetrics.density).toInt(),
-            android.view.View.MeasureSpec.EXACTLY
-        )
+        // Get the root view and add our ComposeView
+        val rootView = activity.findViewById<ViewGroup>(android.R.id.content)
+        rootView.addView(composeView)
+
+        // Measure and layout
+        val widthSpec = View.MeasureSpec.makeMeasureSpec(widthPx, View.MeasureSpec.EXACTLY)
+        val heightSpec = View.MeasureSpec.makeMeasureSpec(heightPx, View.MeasureSpec.EXACTLY)
 
         composeView.measure(widthSpec, heightSpec)
-        composeView.layout(0, 0, composeView.measuredWidth, composeView.measuredHeight)
+        composeView.layout(0, 0, widthPx, heightPx)
 
-        // FIX: Explizit Bitmap mit Config erstellen
-        val bitmap = Bitmap.createBitmap(
-            composeView.measuredWidth,
-            composeView.measuredHeight,
-            Bitmap.Config.ARGB_8888
-        )
+        // Allow composition to complete
+        delay(200)
 
+        // Create bitmap and draw
+        val bitmap = createBitmap(widthPx, heightPx)
         val canvas = Canvas(bitmap)
+
+        // Fill with background color first
+        canvas.drawColor(android.graphics.Color.BLACK)
         composeView.draw(canvas)
 
+        // Clean up - remove from root view
+        rootView.removeView(composeView)
+
+        Log.d("ShareUtils", "Bitmap created: ${bitmap.width}x${bitmap.height}")
+
+        // Save and return URI
         saveBitmapToTempFile(context, bitmap, run)
     }
 
@@ -141,22 +116,33 @@ object ShareUtils {
         val dateFormat = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
         val fileName = "${prefix}${dateFormat.format(run.startTime)}.png"
 
+        // Ensure images directory exists
         val imagesDir = File(context.cacheDir, "images")
         if (!imagesDir.exists()) {
-            imagesDir.mkdirs()
+            val created = imagesDir.mkdirs()
+            Log.d("ShareUtils", "Images directory created: $created, path: ${imagesDir.absolutePath}")
         }
 
         val imageFile = File(imagesDir, fileName)
 
-        FileOutputStream(imageFile).use { out ->
-            bitmap.compress(Bitmap.CompressFormat.PNG, 90, out)
+        try {
+            FileOutputStream(imageFile).use { out ->
+                val compressed = bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                Log.d("ShareUtils", "Bitmap compressed successfully: $compressed, file size: ${imageFile.length()}")
+            }
+        } catch (e: Exception) {
+            Log.e("ShareUtils", "Error saving bitmap to file", e)
+            throw e
         }
 
-        FileProvider.getUriForFile(
+        val uri = FileProvider.getUriForFile(
             context,
             "${context.packageName}.fileprovider",
             imageFile
         )
+
+        Log.d("ShareUtils", "File URI created: $uri")
+        return@withContext uri
     }
 
     private fun generateShareText(run: RunEntity): String {
@@ -216,104 +202,5 @@ object ShareUtils {
         val seconds = ((paceMinutesPerKm - minutes) * 60).toInt()
 
         return String.format(Locale.US, "%d:%02d/km", minutes, seconds)
-    }
-}
-
-@Composable
-fun InstagramStoryRunCard(
-    run: RunEntity,
-    modifier: Modifier = Modifier,
-) {
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(
-                        Color(0xFF1A1B3E),
-                        Color(0xFF0F0F2A),
-                        Color(0xFF000814)
-                    )
-                )
-            )
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(40.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.SpaceEvenly
-        ) {
-            Text(
-                text = "🏃‍♂️ Mein Lauf",
-                fontSize = 32.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.White,
-                textAlign = TextAlign.Center
-            )
-
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(24.dp)
-            ) {
-                StoryStatItem(
-                    label = "Distanz",
-                    value = "${String.format(Locale.US, "%.1f", run.distance)} m",
-                    emoji = "🛣️"
-                )
-
-                StoryStatItem(
-                    label = "Zeit",
-                    value = ShareUtils.formatDuration(run.duration),
-                    emoji = "⏱️"
-                )
-
-                StoryStatItem(
-                    label = "Geschwindigkeit",
-                    value = ShareUtils.calculateAverageSpeed(run.distance, run.duration),
-                    emoji = "💨"
-                )
-            }
-
-            Text(
-                text = SimpleDateFormat("dd. MMMM yyyy", Locale.getDefault()).format(run.startTime),
-                fontSize = 18.sp,
-                color = Color.White.copy(alpha = 0.8f)
-            )
-
-            Text(
-                text = "SyntaxFitness",
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Medium,
-                color = Color(0xFF8B5CF6)
-            )
-        }
-    }
-}
-
-@Composable
-private fun StoryStatItem(
-    label: String,
-    value: String,
-    emoji: String,
-) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            text = emoji,
-            fontSize = 40.sp
-        )
-        Text(
-            text = value,
-            fontSize = 28.sp,
-            fontWeight = FontWeight.Bold,
-            color = Color.White
-        )
-        Text(
-            text = label,
-            fontSize = 16.sp,
-            color = Color.White.copy(alpha = 0.7f)
-        )
     }
 }

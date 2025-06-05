@@ -1,5 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
+    <!-- Cache directory for temporary images -->
     <cache-path name="images" path="images/" />
     <cache-path name="shared_images" path="." />
+
+    <!-- External cache directory (fallback) -->
+    <external-cache-path name="external_images" path="images/" />
+
+    <!-- Files directory for persistent images -->
+    <files-path name="app_images" path="images/" />
 </paths>
