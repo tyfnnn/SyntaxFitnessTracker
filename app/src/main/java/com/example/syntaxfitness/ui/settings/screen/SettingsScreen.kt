@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Card
@@ -60,6 +61,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.app.ActivityCompat
+import androidx.core.app.NotificationManagerCompat
 import com.example.syntaxfitness.ui.running.component.AnimatedGradientBackground
 import com.example.syntaxfitness.ui.running.component.AnimatedGradientLine
 import com.example.syntaxfitness.ui.running.component.GlassmorphismDialog
@@ -75,13 +77,13 @@ fun SettingsScreen(
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
 
-    // Dialog states
+    // Dialog states - now with more specific notification handling
     var showDeleteAllDialog by remember { mutableStateOf(false) }
     var showLocationRationaleDialog by remember { mutableStateOf(false) }
     var showNotificationRationaleDialog by remember { mutableStateOf(false) }
-    var showManualSettingsDialog by remember { mutableStateOf(false) }
+    var showNotificationSettingsDialog by remember { mutableStateOf(false) }
 
-    // Permission request launcher
+    // Permission request launcher - handles both initial requests and follow-up checks
     val requestPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
@@ -95,43 +97,50 @@ fun SettingsScreen(
         }
     }
 
+    // Activity result launcher for settings - allows us to detect when user returns from settings
+    val settingsLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) {
+        // Recheck permissions when user returns from settings
+        viewModel.checkAllPermissions(context)
+    }
+
     // Check permissions when screen loads
     LaunchedEffect(Unit) {
         viewModel.checkAllPermissions(context)
     }
 
-    // Function to handle permission requests
-    fun handlePermissionRequest(isLocationPermission: Boolean) {
+    // Enhanced permission handling functions
+    fun handleLocationPermissionRequest() {
         val activity = context as? ComponentActivity ?: return
 
-        if (isLocationPermission) {
-            val shouldShowRationale = ActivityCompat.shouldShowRequestPermissionRationale(
-                activity,
-                Manifest.permission.ACCESS_FINE_LOCATION
-            )
+        val shouldShowRationale = ActivityCompat.shouldShowRequestPermissionRationale(
+            activity,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        )
 
-            if (shouldShowRationale) {
-                showLocationRationaleDialog = true
-            } else {
-                // Check if permission was permanently denied
-                val permissionStatus = ActivityCompat.checkSelfPermission(
-                    context,
-                    Manifest.permission.ACCESS_FINE_LOCATION
-                )
-
-                if (permissionStatus == android.content.pm.PackageManager.PERMISSION_DENIED) {
-                    // Try requesting permission first
-                    requestPermissionLauncher.launch(
-                        arrayOf(
-                            Manifest.permission.ACCESS_FINE_LOCATION,
-                            Manifest.permission.ACCESS_COARSE_LOCATION
-                        )
-                    )
-                }
-            }
+        if (shouldShowRationale) {
+            showLocationRationaleDialog = true
         } else {
-            // Handle notification permission
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            // Check if we've never asked for permission or if it was permanently denied
+            requestPermissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+                )
+            )
+        }
+    }
+
+    fun handleNotificationPermissionRequest() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val activity = context as? ComponentActivity ?: return
+
+            if (uiState.hasNotificationPermission) {
+                // Permission already granted - guide user to notification settings
+                showNotificationSettingsDialog = true
+            } else {
+                // Check if we should show rationale
                 val shouldShowRationale = ActivityCompat.shouldShowRequestPermissionRationale(
                     activity,
                     Manifest.permission.POST_NOTIFICATIONS
@@ -140,63 +149,92 @@ fun SettingsScreen(
                 if (shouldShowRationale) {
                     showNotificationRationaleDialog = true
                 } else {
+                    // Request permission directly
                     requestPermissionLauncher.launch(arrayOf(Manifest.permission.POST_NOTIFICATIONS))
                 }
             }
+        } else {
+            // For Android 12 and below, notifications are enabled by default
+            // Guide user to notification settings if they want to disable
+            showNotificationSettingsDialog = true
         }
     }
 
-    // Function to open app settings
+    // Function to open app-specific notification settings
+    fun openNotificationSettings() {
+        val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+            }
+        } else {
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = Uri.fromParts("package", context.packageName, null)
+            }
+        }
+        settingsLauncher.launch(intent)
+    }
+
+    // Function to open general app settings
     fun openAppSettings() {
         val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
             data = Uri.fromParts("package", context.packageName, null)
         }
-        context.startActivity(intent)
+        settingsLauncher.launch(intent)
     }
 
-    // Settings items data with enhanced permission handling
+    // Helper function to check if notifications are actually enabled at system level
+    fun areNotificationsEnabledAtSystemLevel(): Boolean {
+        return NotificationManagerCompat.from(context).areNotificationsEnabled()
+    }
+
+    // Settings items with improved notification handling
     val settingsItems = listOf(
         SettingsItem(
             title = "Standortberechtigung",
             description = if (uiState.hasLocationPermission) {
-                "GPS-Zugriff aktiv"
+                "GPS-Zugriff aktiv für Laufverfolgung"
             } else {
                 "GPS-Zugriff für Laufverfolgung erforderlich"
             },
             icon = Icons.Default.LocationOn,
             hasSwitch = true,
             isEnabled = uiState.hasLocationPermission,
+            // Location permission handling - can't be disabled programmatically once granted
             onToggle = {
                 if (!uiState.hasLocationPermission) {
-                    handlePermissionRequest(true)
+                    handleLocationPermissionRequest()
                 } else {
-                    // If permission is already granted, guide user to settings to disable
-                    showManualSettingsDialog = true
+                    // Direct user to settings since we can't revoke permissions programmatically
+                    openAppSettings()
                 }
             }
         ),
         SettingsItem(
             title = "Benachrichtigungen",
-            description = if (uiState.hasNotificationPermission) {
-                "Lauf-Updates aktiviert"
-            } else {
-                "Lauf-Updates und Erinnerungen"
+            description = when {
+                // Check both permission and system-level settings
+                uiState.hasNotificationPermission && areNotificationsEnabledAtSystemLevel() ->
+                    "Lauf-Updates und Erinnerungen aktiviert"
+                uiState.hasNotificationPermission && !areNotificationsEnabledAtSystemLevel() ->
+                    "Berechtigung erteilt, aber in Systemeinstellungen deaktiviert"
+                else ->
+                    "Benachrichtigungen für Lauf-Updates aktivieren"
             },
-            icon = Icons.Default.Notifications,
+            icon = if (uiState.hasNotificationPermission && areNotificationsEnabledAtSystemLevel()) {
+                Icons.Default.Notifications
+            } else {
+                Icons.Default.NotificationsOff
+            },
             hasSwitch = true,
-            isEnabled = uiState.hasNotificationPermission,
+            // Show as enabled only if both permission is granted AND system notifications are enabled
+            isEnabled = uiState.hasNotificationPermission && areNotificationsEnabledAtSystemLevel(),
             onToggle = {
-                if (!uiState.hasNotificationPermission) {
-                    handlePermissionRequest(false)
-                } else {
-                    // If permission is already granted, guide user to settings to disable
-                    showManualSettingsDialog = true
-                }
+                handleNotificationPermissionRequest()
             }
         ),
         SettingsItem(
             title = "Alle Läufe löschen",
-            description = "Entfernt alle gespeicherten Laufdaten",
+            description = "Entfernt alle gespeicherten Laufdaten permanent",
             icon = Icons.Default.Delete,
             hasSwitch = false,
             isDestructive = true,
@@ -204,25 +242,25 @@ fun SettingsScreen(
         ),
         SettingsItem(
             title = "Datenschutz",
-            description = "Ihre Daten bleiben lokal gespeichert",
+            description = "Ihre Daten bleiben lokal auf diesem Gerät",
             icon = Icons.Default.Security,
             hasSwitch = false,
-            onClick = { /* TODO: Show privacy info */ }
+            onClick = { /* TODO: Show privacy policy/info */ }
         ),
         SettingsItem(
-            title = "App-Info",
-            description = "Version 1.0 • SyntaxFitness",
+            title = "App-Informationen",
+            description = "Version 1.0.0 • SyntaxFitness by [Your Name]",
             icon = Icons.Default.Info,
             hasSwitch = false,
-            onClick = { /* TODO: Show app info */ }
+            onClick = { /* TODO: Show detailed app info, licenses, etc. */ }
         )
     )
 
-    // Dialogs
+    // Enhanced dialog handling
     if (showDeleteAllDialog) {
         GlassmorphismDialog(
             title = "Alle Läufe löschen?",
-            text = "Diese Aktion kann nicht rückgängig gemacht werden. Alle Ihre Laufdaten werden dauerhaft entfernt.",
+            text = "Diese Aktion kann nicht rückgängig gemacht werden. Alle Ihre gespeicherten Laufdaten werden dauerhaft von diesem Gerät entfernt.",
             onConfirm = {
                 viewModel.deleteAllRuns()
                 showDeleteAllDialog = false
@@ -234,7 +272,7 @@ fun SettingsScreen(
     if (showLocationRationaleDialog) {
         GlassmorphismDialog(
             title = "Standortberechtigung erforderlich",
-            text = "SyntaxFitness benötigt Zugriff auf Ihren Standort, um Ihre Laufstrecke genau zu verfolgen und die zurückgelegte Distanz zu berechnen.",
+            text = "SyntaxFitness benötigt Zugriff auf Ihren Standort, um Ihre Laufstrecke präzise zu verfolgen und die zurückgelegte Distanz zu berechnen. Ihre Standortdaten bleiben lokal auf Ihrem Gerät gespeichert.",
             onConfirm = {
                 showLocationRationaleDialog = false
                 requestPermissionLauncher.launch(
@@ -250,8 +288,8 @@ fun SettingsScreen(
 
     if (showNotificationRationaleDialog) {
         GlassmorphismDialog(
-            title = "Benachrichtigungsberechtigung",
-            text = "Erlauben Sie Benachrichtigungen, um über Lauf-Updates und wichtige Informationen informiert zu werden.",
+            title = "Benachrichtigungen aktivieren",
+            text = "Erlauben Sie Benachrichtigungen, um wichtige Updates über Ihre Läufe zu erhalten. Sie können diese jederzeit in den Einstellungen deaktivieren.",
             onConfirm = {
                 showNotificationRationaleDialog = false
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -262,15 +300,15 @@ fun SettingsScreen(
         )
     }
 
-    if (showManualSettingsDialog) {
+    if (showNotificationSettingsDialog) {
         GlassmorphismDialog(
-            title = "Einstellungen ändern",
-            text = "Um Berechtigungen zu ändern, öffnen Sie die App-Einstellungen in den Systemeinstellungen.",
+            title = "Benachrichtigungseinstellungen",
+            text = "Um Benachrichtigungseinstellungen zu ändern, werden Sie zu den Systemeinstellungen weitergeleitet. Dort können Sie Benachrichtigungen für SyntaxFitness aktivieren oder deaktivieren.",
             onConfirm = {
-                showManualSettingsDialog = false
-                openAppSettings()
+                showNotificationSettingsDialog = false
+                openNotificationSettings()
             },
-            onDismiss = { showManualSettingsDialog = false }
+            onDismiss = { showNotificationSettingsDialog = false }
         )
     }
 
@@ -286,7 +324,7 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             item {
-                // Header with back button
+                // Header with navigation and system settings access
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier.padding(top = 32.dp, bottom = 16.dp)
@@ -321,7 +359,7 @@ fun SettingsScreen(
                             color = Color.White
                         )
 
-                        // Manual settings button
+                        // System settings button - provides direct access to app settings
                         IconButton(
                             onClick = { openAppSettings() },
                             modifier = Modifier
@@ -333,7 +371,7 @@ fun SettingsScreen(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Settings,
-                                contentDescription = "System-Einstellungen",
+                                contentDescription = "System-Einstellungen öffnen",
                                 tint = Color.White,
                                 modifier = Modifier.size(20.dp)
                             )
@@ -345,7 +383,7 @@ fun SettingsScreen(
                 }
             }
 
-            // Statistics summary
+            // Statistics summary - only show if user has recorded runs
             if (uiState.totalRuns > 0) {
                 item {
                     StatsSummaryCard(
@@ -355,15 +393,16 @@ fun SettingsScreen(
                 }
             }
 
-            // Permission status indicator
+            // Enhanced permission status indicator
             item {
                 PermissionStatusCard(
                     hasLocationPermission = uiState.hasLocationPermission,
-                    hasNotificationPermission = uiState.hasNotificationPermission
+                    hasNotificationPermission = uiState.hasNotificationPermission,
+                    notificationsEnabledAtSystemLevel = areNotificationsEnabledAtSystemLevel()
                 )
             }
 
-            // Settings items
+            // Settings items with enhanced interactivity
             itemsIndexed(
                 items = settingsItems,
                 key = { _, item -> item.title }
@@ -392,19 +431,40 @@ fun SettingsScreen(
 @Composable
 private fun PermissionStatusCard(
     hasLocationPermission: Boolean,
-    hasNotificationPermission: Boolean
+    hasNotificationPermission: Boolean,
+    notificationsEnabledAtSystemLevel: Boolean
 ) {
-    val allPermissionsGranted = hasLocationPermission && hasNotificationPermission
+    // More nuanced status evaluation
+    val effectiveNotificationStatus = hasNotificationPermission && notificationsEnabledAtSystemLevel
+    val allPermissionsOptimal = hasLocationPermission && effectiveNotificationStatus
+
     val statusColor = when {
-        allPermissionsGranted -> Color(0xFF10B981)
-        hasLocationPermission -> Color(0xFFF59E0B)
-        else -> Color(0xFFEF4444)
+        allPermissionsOptimal -> Color(0xFF10B981) // Green - everything working
+        hasLocationPermission && hasNotificationPermission -> Color(0xFFF59E0B) // Orange - notifications disabled in system
+        hasLocationPermission -> Color(0xFF3B82F6) // Blue - core functionality works
+        else -> Color(0xFFEF4444) // Red - core functionality missing
     }
 
     val statusText = when {
-        allPermissionsGranted -> "Alle Berechtigungen erteilt"
-        hasLocationPermission -> "Standort aktiviert, Benachrichtigungen optional"
-        else -> "Standortberechtigung erforderlich"
+        allPermissionsOptimal -> "Alle Funktionen verfügbar"
+        hasLocationPermission && hasNotificationPermission && !notificationsEnabledAtSystemLevel ->
+            "Benachrichtigungen in Systemeinstellungen deaktiviert"
+        hasLocationPermission && !hasNotificationPermission ->
+            "Laufverfolgung aktiv, Benachrichtigungen optional"
+        hasLocationPermission ->
+            "Laufverfolgung aktiv"
+        else ->
+            "Standortberechtigung für Kernfunktionen erforderlich"
+    }
+
+    val statusDescription = when {
+        allPermissionsOptimal -> "Laufverfolgung und Benachrichtigungen funktionieren einwandfrei"
+        hasLocationPermission && hasNotificationPermission && !notificationsEnabledAtSystemLevel ->
+            "Tippen Sie auf System-Einstellungen, um Benachrichtigungen zu aktivieren"
+        hasLocationPermission ->
+            "Sie können Läufe verfolgen. Benachrichtigungen sind optional"
+        else ->
+            "Ohne Standortberechtigung können keine Läufe aufgezeichnet werden"
     }
 
     Card(
@@ -421,7 +481,11 @@ private fun PermissionStatusCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
-                imageVector = if (allPermissionsGranted) Icons.Default.Security else Icons.Default.LocationOn,
+                imageVector = when {
+                    allPermissionsOptimal -> Icons.Default.Security
+                    hasLocationPermission -> Icons.Default.LocationOn
+                    else -> Icons.Default.NotificationsOff
+                },
                 contentDescription = null,
                 tint = statusColor,
                 modifier = Modifier.size(24.dp)
@@ -433,15 +497,15 @@ private fun PermissionStatusCard(
                     .weight(1f)
             ) {
                 Text(
-                    text = "Berechtigungsstatus",
-                    fontSize = 14.sp,
-                    color = Color.White.copy(alpha = 0.8f)
-                )
-                Text(
                     text = statusText,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Medium,
                     color = statusColor
+                )
+                Text(
+                    text = statusDescription,
+                    fontSize = 14.sp,
+                    color = Color.White.copy(alpha = 0.7f)
                 )
             }
         }
@@ -467,7 +531,7 @@ private fun StatsSummaryCard(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
-                text = "Deine Statistiken",
+                text = "Ihre Lauf-Statistiken",
                 fontSize = 18.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = Color.White,
@@ -486,7 +550,7 @@ private fun StatsSummaryCard(
                         color = Color(0xFF8B5CF6)
                     )
                     Text(
-                        text = "Läufe",
+                        text = if (totalRuns == 1) "Lauf" else "Läufe",
                         fontSize = 14.sp,
                         color = Color.White.copy(alpha = 0.7f)
                     )
@@ -586,6 +650,7 @@ private fun SettingsCard(item: SettingsItem) {
     }
 }
 
+// Enhanced data class with better organization
 private data class SettingsItem(
     val title: String,
     val description: String,
