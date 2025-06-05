@@ -283,8 +283,9 @@ fun RunningScreen(
                             onDelete = { deletedRun ->
                                 viewModel.deleteRun(deletedRun)
                             },
-                            onClick = { clickedRun ->
-                                onNavigateToRunDetail(clickedRun.id) }
+                            onClick = {
+                                onNavigateToRunDetail(run.id)
+                            }
                         )
                     }
                 }

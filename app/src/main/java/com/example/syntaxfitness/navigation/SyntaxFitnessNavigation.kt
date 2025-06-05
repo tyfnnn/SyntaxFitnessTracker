@@ -43,14 +43,12 @@ fun SyntaxFitnessNavigation(
             arguments = listOf(
                 navArgument("runId") {
                     type = NavType.LongType
-                    defaultValue = 0L
                 }
             )
         ) {backStackEntry ->
             val runId = backStackEntry.arguments?.getLong("runId") ?: 0L
             RunDetailScreen(
                 runId = runId,
-                modifier = Modifier,
                 onNavigateBack = { navController.popBackStack() }
             )
 
