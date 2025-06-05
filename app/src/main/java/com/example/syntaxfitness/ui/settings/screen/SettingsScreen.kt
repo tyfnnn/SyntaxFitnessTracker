@@ -1,5 +1,13 @@
 package com.example.syntaxfitness.ui.settings.screen
 
+import android.Manifest
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -27,6 +35,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -34,7 +43,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -48,6 +59,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.app.ActivityCompat
 import com.example.syntaxfitness.ui.running.component.AnimatedGradientBackground
 import com.example.syntaxfitness.ui.running.component.AnimatedGradientLine
 import com.example.syntaxfitness.ui.running.component.GlassmorphismDialog
@@ -62,25 +74,125 @@ fun SettingsScreen(
 ) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
-    var showDeleteAllDialog by remember { mutableStateOf(false) }
 
-    // Settings items data
+    // Dialog states
+    var showDeleteAllDialog by remember { mutableStateOf(false) }
+    var showLocationRationaleDialog by remember { mutableStateOf(false) }
+    var showNotificationRationaleDialog by remember { mutableStateOf(false) }
+    var showManualSettingsDialog by remember { mutableStateOf(false) }
+
+    // Permission request launcher
+    val requestPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val fineLocationGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true
+        val coarseLocationGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        viewModel.updateLocationPermission(fineLocationGranted, coarseLocationGranted)
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val notificationGranted = permissions[Manifest.permission.POST_NOTIFICATIONS] == true
+            viewModel.updateNotificationPermission(notificationGranted)
+        }
+    }
+
+    // Check permissions when screen loads
+    LaunchedEffect(Unit) {
+        viewModel.checkAllPermissions(context)
+    }
+
+    // Function to handle permission requests
+    fun handlePermissionRequest(isLocationPermission: Boolean) {
+        val activity = context as? ComponentActivity ?: return
+
+        if (isLocationPermission) {
+            val shouldShowRationale = ActivityCompat.shouldShowRequestPermissionRationale(
+                activity,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            )
+
+            if (shouldShowRationale) {
+                showLocationRationaleDialog = true
+            } else {
+                // Check if permission was permanently denied
+                val permissionStatus = ActivityCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.ACCESS_FINE_LOCATION
+                )
+
+                if (permissionStatus == android.content.pm.PackageManager.PERMISSION_DENIED) {
+                    // Try requesting permission first
+                    requestPermissionLauncher.launch(
+                        arrayOf(
+                            Manifest.permission.ACCESS_FINE_LOCATION,
+                            Manifest.permission.ACCESS_COARSE_LOCATION
+                        )
+                    )
+                }
+            }
+        } else {
+            // Handle notification permission
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                val shouldShowRationale = ActivityCompat.shouldShowRequestPermissionRationale(
+                    activity,
+                    Manifest.permission.POST_NOTIFICATIONS
+                )
+
+                if (shouldShowRationale) {
+                    showNotificationRationaleDialog = true
+                } else {
+                    requestPermissionLauncher.launch(arrayOf(Manifest.permission.POST_NOTIFICATIONS))
+                }
+            }
+        }
+    }
+
+    // Function to open app settings
+    fun openAppSettings() {
+        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+            data = Uri.fromParts("package", context.packageName, null)
+        }
+        context.startActivity(intent)
+    }
+
+    // Settings items data with enhanced permission handling
     val settingsItems = listOf(
         SettingsItem(
             title = "Standortberechtigung",
-            description = "GPS-Zugriff für Laufverfolgung",
+            description = if (uiState.hasLocationPermission) {
+                "GPS-Zugriff aktiv"
+            } else {
+                "GPS-Zugriff für Laufverfolgung erforderlich"
+            },
             icon = Icons.Default.LocationOn,
             hasSwitch = true,
             isEnabled = uiState.hasLocationPermission,
-            onToggle = { viewModel.checkAllPermissions(context) }
+            onToggle = {
+                if (!uiState.hasLocationPermission) {
+                    handlePermissionRequest(true)
+                } else {
+                    // If permission is already granted, guide user to settings to disable
+                    showManualSettingsDialog = true
+                }
+            }
         ),
         SettingsItem(
             title = "Benachrichtigungen",
-            description = "Lauf-Updates und Erinnerungen",
+            description = if (uiState.hasNotificationPermission) {
+                "Lauf-Updates aktiviert"
+            } else {
+                "Lauf-Updates und Erinnerungen"
+            },
             icon = Icons.Default.Notifications,
             hasSwitch = true,
             isEnabled = uiState.hasNotificationPermission,
-            onToggle = { viewModel.checkAllPermissions(context) }
+            onToggle = {
+                if (!uiState.hasNotificationPermission) {
+                    handlePermissionRequest(false)
+                } else {
+                    // If permission is already granted, guide user to settings to disable
+                    showManualSettingsDialog = true
+                }
+            }
         ),
         SettingsItem(
             title = "Alle Läufe löschen",
@@ -106,7 +218,7 @@ fun SettingsScreen(
         )
     )
 
-    // Delete all runs confirmation dialog
+    // Dialogs
     if (showDeleteAllDialog) {
         GlassmorphismDialog(
             title = "Alle Läufe löschen?",
@@ -116,6 +228,49 @@ fun SettingsScreen(
                 showDeleteAllDialog = false
             },
             onDismiss = { showDeleteAllDialog = false }
+        )
+    }
+
+    if (showLocationRationaleDialog) {
+        GlassmorphismDialog(
+            title = "Standortberechtigung erforderlich",
+            text = "SyntaxFitness benötigt Zugriff auf Ihren Standort, um Ihre Laufstrecke genau zu verfolgen und die zurückgelegte Distanz zu berechnen.",
+            onConfirm = {
+                showLocationRationaleDialog = false
+                requestPermissionLauncher.launch(
+                    arrayOf(
+                        Manifest.permission.ACCESS_FINE_LOCATION,
+                        Manifest.permission.ACCESS_COARSE_LOCATION
+                    )
+                )
+            },
+            onDismiss = { showLocationRationaleDialog = false }
+        )
+    }
+
+    if (showNotificationRationaleDialog) {
+        GlassmorphismDialog(
+            title = "Benachrichtigungsberechtigung",
+            text = "Erlauben Sie Benachrichtigungen, um über Lauf-Updates und wichtige Informationen informiert zu werden.",
+            onConfirm = {
+                showNotificationRationaleDialog = false
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    requestPermissionLauncher.launch(arrayOf(Manifest.permission.POST_NOTIFICATIONS))
+                }
+            },
+            onDismiss = { showNotificationRationaleDialog = false }
+        )
+    }
+
+    if (showManualSettingsDialog) {
+        GlassmorphismDialog(
+            title = "Einstellungen ändern",
+            text = "Um Berechtigungen zu ändern, öffnen Sie die App-Einstellungen in den Systemeinstellungen.",
+            onConfirm = {
+                showManualSettingsDialog = false
+                openAppSettings()
+            },
+            onDismiss = { showManualSettingsDialog = false }
         )
     }
 
@@ -166,8 +321,23 @@ fun SettingsScreen(
                             color = Color.White
                         )
 
-                        // Placeholder for symmetry
-                        Box(modifier = Modifier.size(48.dp))
+                        // Manual settings button
+                        IconButton(
+                            onClick = { openAppSettings() },
+                            modifier = Modifier
+                                .size(48.dp)
+                                .background(
+                                    color = Color.White.copy(alpha = 0.1f),
+                                    shape = CircleShape
+                                )
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Settings,
+                                contentDescription = "System-Einstellungen",
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
 
                     Spacer(modifier = Modifier.height(8.dp))
@@ -183,6 +353,14 @@ fun SettingsScreen(
                         totalDistance = uiState.totalDistance
                     )
                 }
+            }
+
+            // Permission status indicator
+            item {
+                PermissionStatusCard(
+                    hasLocationPermission = uiState.hasLocationPermission,
+                    hasNotificationPermission = uiState.hasNotificationPermission
+                )
             }
 
             // Settings items
@@ -206,6 +384,65 @@ fun SettingsScreen(
                 ) {
                     SettingsCard(item = item)
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PermissionStatusCard(
+    hasLocationPermission: Boolean,
+    hasNotificationPermission: Boolean
+) {
+    val allPermissionsGranted = hasLocationPermission && hasNotificationPermission
+    val statusColor = when {
+        allPermissionsGranted -> Color(0xFF10B981)
+        hasLocationPermission -> Color(0xFFF59E0B)
+        else -> Color(0xFFEF4444)
+    }
+
+    val statusText = when {
+        allPermissionsGranted -> "Alle Berechtigungen erteilt"
+        hasLocationPermission -> "Standort aktiviert, Benachrichtigungen optional"
+        else -> "Standortberechtigung erforderlich"
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = statusColor.copy(alpha = 0.1f)
+        ),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = if (allPermissionsGranted) Icons.Default.Security else Icons.Default.LocationOn,
+                contentDescription = null,
+                tint = statusColor,
+                modifier = Modifier.size(24.dp)
+            )
+
+            Column(
+                modifier = Modifier
+                    .padding(start = 12.dp)
+                    .weight(1f)
+            ) {
+                Text(
+                    text = "Berechtigungsstatus",
+                    fontSize = 14.sp,
+                    color = Color.White.copy(alpha = 0.8f)
+                )
+                Text(
+                    text = statusText,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = statusColor
+                )
             }
         }
     }
