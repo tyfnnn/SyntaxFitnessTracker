@@ -42,7 +42,8 @@ import java.util.Locale
 fun GlassmorphismRunHistoryItem(
     modifier: Modifier = Modifier,
     run: RunEntity,
-    onDelete: (RunEntity) -> Unit = {}
+    onDelete: (RunEntity) -> Unit = {},
+    onClick: (RunEntity) -> Unit = {}
 ) {
     var isVisible by remember { mutableStateOf(true) }
     val swipeState = rememberSwipeToDismissBoxState(
@@ -83,7 +84,10 @@ fun GlassmorphismRunHistoryItem(
                 )
             }
         ) {
-            RunHistoryCard(run = run)
+            RunHistoryCard(
+                run = run,
+                onClick = { onClick(run) }
+                )
         }
     }
 }
@@ -106,12 +110,13 @@ private fun DeleteBackground(swipeProgress: Float) {
 @Composable
 private fun RunHistoryCard(
     run: RunEntity,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit = {}
 ) {
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .clickable { },
+            .clickable { onClick() },
         colors = CardDefaults.cardColors(
             containerColor = Color.White.copy(alpha = 0.08f)
         ),

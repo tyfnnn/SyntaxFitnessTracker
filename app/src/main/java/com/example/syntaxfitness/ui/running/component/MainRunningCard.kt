@@ -38,6 +38,7 @@ import androidx.compose.runtime.getValue
 
 @Composable
 fun MainRunningCard(
+    modifier: Modifier,
     isRunning: Boolean,
     isGettingLocation: Boolean,
     statusMessage: String,
@@ -63,16 +64,14 @@ fun MainRunningCard(
     )
 
     Card(
-        modifier = Modifier.Companion
-            .fillMaxWidth()
-            .padding(horizontal = 8.dp),
+        modifier = modifier,
         colors = CardDefaults.cardColors(
             containerColor = Color.Companion.White.copy(alpha = 0.15f)
         ),
         shape = RoundedCornerShape(24.dp)
     ) {
         Column(
-            modifier = Modifier.Companion
+            modifier = Modifier
                 .padding(32.dp)
                 .fillMaxWidth(),
             horizontalAlignment = Alignment.Companion.CenterHorizontally

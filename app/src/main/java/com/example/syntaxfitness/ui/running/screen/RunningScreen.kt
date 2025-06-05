@@ -3,6 +3,7 @@
 package com.example.syntaxfitness.ui.running.screen
 
 import android.Manifest
+import android.R.attr.onClick
 import android.os.Build
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -43,7 +44,8 @@ import java.util.Locale
 fun RunningScreen(
     modifier: Modifier = Modifier,
     viewModel: RunningViewModel = koinViewModel(),
-    onNavigateToSettings: () -> Unit = {}
+    onNavigateToSettings: () -> Unit = {},
+    onNavigateToRunDetail: (Long) -> Unit = {}
 ) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
@@ -214,6 +216,7 @@ fun RunningScreen(
             // Main running control card
             item {
                 MainRunningCard(
+                    modifier = Modifier.fillMaxWidth(),
                     isRunning = uiState.isRunning,
                     isGettingLocation = uiState.isGettingLocation,
                     statusMessage = uiState.statusMessage,
@@ -279,7 +282,9 @@ fun RunningScreen(
                             run = run,
                             onDelete = { deletedRun ->
                                 viewModel.deleteRun(deletedRun)
-                            }
+                            },
+                            onClick = { clickedRun ->
+                                onNavigateToRunDetail(clickedRun.id) }
                         )
                     }
                 }
