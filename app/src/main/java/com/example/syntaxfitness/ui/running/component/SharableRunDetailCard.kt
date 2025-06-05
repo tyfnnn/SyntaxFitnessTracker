@@ -4,6 +4,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.DirectionsRun
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -19,7 +20,6 @@ import com.example.syntaxfitness.data.local.entity.RunEntity
 import com.example.syntaxfitness.utils.CoordinateUtils
 import java.text.SimpleDateFormat
 import java.util.*
-import kotlin.math.*
 
 @Composable
 fun ShareableRunDetailCard(
@@ -110,7 +110,7 @@ private fun ShareableHeader() {
         horizontalArrangement = Arrangement.Center
     ) {
         Icon(
-            imageVector = Icons.Default.DirectionsRun,
+            imageVector = Icons.AutoMirrored.Filled.DirectionsRun,
             contentDescription = null,
             tint = Color(0xFF8B5CF6),
             modifier = Modifier.size(32.dp)
@@ -169,7 +169,7 @@ private fun ShareableStatsGrid(run: RunEntity) {
             ShareableStatCard(
                 title = "Distanz",
                 value = String.format(Locale.US, "%.1f m", run.distance),
-                icon = Icons.Default.DirectionsRun,
+                icon = Icons.AutoMirrored.Filled.DirectionsRun,
                 color = Color(0xFF8B5CF6),
                 modifier = Modifier.weight(1f)
             )
